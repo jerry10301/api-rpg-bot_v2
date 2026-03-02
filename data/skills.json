@@ -1,0 +1,27 @@
+{
+    "Fireball": {
+        "name": "火球術",
+        "mp_cost": 10,
+        "required_stat": "INT",
+        "damage_dice": "2d6",
+        "damage_multiplier": 2.4,
+        "description": "發射一枚火球攻擊敵人，造成火焰傷害。"
+    },
+    "Heal": {
+        "name": "治癒術",
+        "mp_cost": 5,
+        "required_stat": "WIS",
+        "heal_dice": "2d4",
+        "heal_multiplier": 1.5,
+        "is_healing": true,
+        "description": "恢復少量生命值。"
+    },
+    "AcidSpit": {
+        "name": "酸液噴射",
+        "mp_cost": 3,
+        "required_stat": "INT",
+        "damage_dice": "1d4",
+        "damage_multiplier": 1.0,
+        "description": "噴出腐蝕性酸液，對目標造成少量魔法傷害。"
+    }
+}

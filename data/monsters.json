@@ -1,0 +1,35 @@
+{
+    "goblin": {
+        "name": "哥布林",
+        "hp": 30,
+        "mp": 0,
+        "attack": 5,
+        "defense": 2,
+        "description": "矮小、狡猾、成群結隊",
+        "skills": []
+    },
+    "slime": {
+        "name": "史萊姆",
+        "hp": 20,
+        "mp": 10,
+        "attack": 2,
+        "defense": 1,
+        "description": "黏稠、半透明、酸性腐蝕",
+        "skills": [
+            "AcidSpit"
+        ]
+    },
+    "forest_witch": {
+        "name": "森林巫婆",
+        "hp": 25,
+        "mp": 40,
+        "attack": 3,
+        "defense": 1,
+        "description": "藏匿林間、精通黑魔法",
+        "exp_reward": 30,
+        "money_reward": 12,
+        "skills": [
+            "Fireball"
+        ]
+    }
+}

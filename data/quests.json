@@ -1,0 +1,72 @@
+{
+    "quest_mopping": {
+        "name": "擦拭的大理石地板",
+        "type": "work",
+        "provider_id": "npc_commander_lin",
+        "description": "協助Lin爸將長廊的地板擦得晶瑩剔透。",
+        "difficulty_stat": "CON",
+        "difficulty_chance": 80,
+        "rewards": {
+            "money": 10,
+            "exp": 20
+        }
+    },
+    "quest_lead_student": {
+        "name": "引導迷路的新生",
+        "type": "work",
+        "provider_id": "npc_guide_lemoshark",
+        "description": "引導迷路的新生到正確的教室。",
+        "difficulty_stat": "DEX",
+        "difficulty_chance": 60,
+        "rewards": {
+            "money": 20,
+            "exp": 30
+        }
+    },
+    "quest_hunt_slime": {
+        "name": "討伐後山史萊姆",
+        "type": "combat",
+        "provider_id": "npc_commander_lin",
+        "description": "前往魔法學院後山，清除那些煩人的酸性史萊姆。",
+        "difficulty_stat": "STR",
+        "difficulty_chance": 30,
+        "rewards": {
+            "money": 100,
+            "exp": 100
+        }
+    },
+    "quest_assist_krenz": {
+        "name": "協助製作透視課件",
+        "type": "work",
+        "provider_id": "npc_founder_krenz",
+        "description": "幫助 K大 整理繁雜的透視幾何圖形與底層邏輯課件。",
+        "difficulty_stat": "INT",
+        "difficulty_chance": 50,
+        "rewards": {
+            "money": 80,
+            "exp": 120,
+            "chance_stat_increase": {
+                "chance": 20,
+                "stat": "INT",
+                "amount": 1
+            }
+        }
+    },
+    "quest_hunt_goblin": {
+        "name": "討伐後山哥布林",
+        "type": "combat",
+        "provider_id": "npc_commander_lin",
+        "description": "前往魔法學院後山，清除那些哥布林。",
+        "difficulty_stat": "STR",
+        "difficulty_chance": 50,
+        "rewards": {
+            "money": 150,
+            "exp": 150,
+            "chance_stat_increase": {
+                "chance": 20,
+                "stat": "STR",
+                "amount": 1
+            }
+        }
+    }
+}
