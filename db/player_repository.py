@@ -63,22 +63,47 @@ class PlayerRepository:
         char = Character(name=name)
         char.learn_skill("Heal", 1)
         char.learn_skill("Fireball", 1)
+        # 初始物品
+        char.add_item("MinorHealthPotion", 3)
+        char.add_item("MinorManaPotion", 2)
 
         conn = self._conn()
         try:
+            # 使用交易確保多表寫入原子性
+            conn.execute("BEGIN TRANSACTION")
+            
+            # 1. 插入玩家基本資料與屬性
             conn.execute("""
                 INSERT INTO players
                     (discord_user_id, name, level, hp, max_hp, mp, max_mp,
-                     money, exp, stats_json, skills_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     money, exp, stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_luk)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 user_id, char.name, char.level,
                 char.hp, char.max_hp, char.mp, char.max_mp,
                 char.money, char.exp,
-                json.dumps(char.stats),
-                json.dumps(char.skills)
+                char.stats["STR"], char.stats["DEX"], char.stats["CON"],
+                char.stats["INT"], char.stats["WIS"], char.stats["LUK"]
             ))
+
+            # 2. 插入初始技能
+            skill_data = [(user_id, s, l) for s, l in char.skills.items()]
+            conn.executemany(
+                "INSERT INTO player_skills (discord_user_id, skill_id, level) VALUES (?, ?, ?)",
+                skill_data
+            )
+
+            # 3. 插入初始物品
+            inv_data = [(user_id, i, a) for i, a in char.inventory.items()]
+            conn.executemany(
+                "INSERT INTO player_inventory (discord_user_id, item_id, amount) VALUES (?, ?, ?)",
+                inv_data
+            )
+
             conn.commit()
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            raise e
         finally:
             conn.close()
         return char
@@ -87,11 +112,33 @@ class PlayerRepository:
         """從 DB 還原 Character 物件；若找不到回傳 None"""
         conn = self._conn()
         try:
+            # 1. 讀取玩家核心資料
             row = conn.execute(
                 "SELECT * FROM players WHERE discord_user_id = ?", (user_id,)
             ).fetchone()
             if not row:
                 return None
+
+            # 2. 讀取技能
+            skill_rows = conn.execute(
+                "SELECT skill_id, level FROM player_skills WHERE discord_user_id = ?", (user_id,)
+            ).fetchall()
+            skills = {r["skill_id"]: r["level"] for r in skill_rows}
+
+            # 3. 讀取物品
+            inv_rows = conn.execute(
+                "SELECT item_id, amount FROM player_inventory WHERE discord_user_id = ?", (user_id,)
+            ).fetchall()
+            inventory = {r["item_id"]: r["amount"] for r in inv_rows}
+
+            stats = {
+                "STR": row["stat_str"],
+                "DEX": row["stat_dex"],
+                "CON": row["stat_con"],
+                "INT": row["stat_int"],
+                "WIS": row["stat_wis"],
+                "LUK": row["stat_luk"]
+            }
 
             char = Character(
                 name=row["name"],
@@ -102,10 +149,11 @@ class PlayerRepository:
                 max_mp=row["max_mp"],
                 money=row["money"],
                 exp=row["exp"],
-                stats=json.loads(row["stats_json"]),
-                skills=json.loads(row["skills_json"])
+                stats=stats,
+                skills=skills,
+                inventory=inventory
             )
-            # Character.__post_init__ 會重算 max_hp/max_mp，需用 override 保持 DB 值
+            # 保持 DB 的上限值 (避免 Character.__post_init__ 重新根據等級計算後產生誤差)
             char.max_hp = row["max_hp"]
             char.max_mp = row["max_mp"]
             return char
@@ -113,23 +161,47 @@ class PlayerRepository:
             conn.close()
 
     def save_player(self, user_id: str, char: Character):
-        """將 Character 物件序列化並更新至 DB"""
+        """將 Character 物件更新至 DB（包含屬性、技能、物品）"""
         conn = self._conn()
         try:
+            conn.execute("BEGIN TRANSACTION")
+
+            # 1. 更新基本資料與屬性
             conn.execute("""
                 UPDATE players SET
                     name=?, level=?, hp=?, max_hp=?, mp=?, max_mp=?,
-                    money=?, exp=?, stats_json=?, skills_json=?
+                    money=?, exp=?, 
+                    stat_str=?, stat_dex=?, stat_con=?, stat_int=?, stat_wis=?, stat_luk=?
                 WHERE discord_user_id=?
             """, (
                 char.name, char.level,
                 char.hp, char.max_hp, char.mp, char.max_mp,
                 char.money, char.exp,
-                json.dumps(char.stats),
-                json.dumps(char.skills),
+                char.stats["STR"], char.stats["DEX"], char.stats["CON"],
+                char.stats["INT"], char.stats["WIS"], char.stats["LUK"],
                 user_id
             ))
+
+            # 2. 同步技能 (刪除後重新插入最保險且簡單)
+            conn.execute("DELETE FROM player_skills WHERE discord_user_id = ?", (user_id,))
+            skill_data = [(user_id, s, l) for s, l in char.skills.items()]
+            conn.executemany(
+                "INSERT INTO player_skills (discord_user_id, skill_id, level) VALUES (?, ?, ?)",
+                skill_data
+            )
+
+            # 3. 同步物品
+            conn.execute("DELETE FROM player_inventory WHERE discord_user_id = ?", (user_id,))
+            inv_data = [(user_id, i, a) for i, a in char.inventory.items()]
+            conn.executemany(
+                "INSERT INTO player_inventory (discord_user_id, item_id, amount) VALUES (?, ?, ?)",
+                inv_data
+            )
+
             conn.commit()
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            raise e
         finally:
             conn.close()
 

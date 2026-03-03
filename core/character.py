@@ -1,6 +1,16 @@
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
+# 屬性中文標籤對應表
+STAT_LABELS = {
+    "STR": "力量",
+    "DEX": "敏捷",
+    "CON": "體質",
+    "INT": "智力",
+    "WIS": "精神",
+    "LUK": "幸運"
+}
+
 @dataclass
 class Character:
     name: str
@@ -24,6 +34,9 @@ class Character:
     
     # 技能與熟練度 { "技能名稱": 熟練度等級 }
     skills: Dict[str, int] = field(default_factory=dict)
+    
+    # 物品欄 { "物品名稱": 數量 }
+    inventory: Dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self):
         """初始化後計算最大生命與法力"""
@@ -38,9 +51,11 @@ class Character:
         con = self.stats.get("CON", 10)
         str_val = self.stats.get("STR", 10)
         int_val = self.stats.get("INT", 10)
+        wis = self.stats.get("WIS", 10)
         
-        self.max_hp = 50 + (self.level * 10) + (con * 15) + (str_val * 5)
-        self.max_mp = 25 + (self.level * 10) + (con * 10) + (int_val * 5)
+        # 優化後的計算公式
+        self.max_hp = 100 + (self.level * 20) + (con * 15) + (str_val * 5)
+        self.max_mp = 50 + (self.level * 15) + (wis * 12) + (int_val * 8)
     
     def update_stat(self, stat_name: str, amount: int) -> bool:
         """增加或減少特定屬性"""
@@ -63,16 +78,32 @@ class Character:
         self.exp += amount
         self._check_level_up()
 
+    def _get_exp_required(self, level: int) -> int:
+        """計算升至下一級所需的經驗值 (非線性公式: 100 * level^1.5)"""
+        return int(100 * (level ** 1.5))
+
     def _check_level_up(self):
-        # 簡單的升級邏輯：每 100 exp 升一級
-        while self.exp >= self.level * 100:
-            self.exp -= self.level * 100
+        """檢查是否升級並執行成長邏輯"""
+        import random
+        
+        while self.exp >= self._get_exp_required(self.level):
+            self.exp -= self._get_exp_required(self.level)
             self.level += 1
-            # 升級後重新計算上限並補滿
+            
+            # 1. 基礎屬性成長：全屬性 +1
+            for stat in self.stats:
+                self.stats[stat] += 1
+            
+            # 2. 額外隨機成長：隨機選 2 項屬性額外 +1
+            bonus_stats = random.sample(list(self.stats.keys()), 2)
+            for stat in bonus_stats:
+                self.stats[stat] += 1
+                
+            # 屬性變動後重新計算上限並補滿
             self.recalculate_max_stats()
             self.hp = self.max_hp
             self.mp = self.max_mp
-            # 升級時可以給予屬性點，此處先保持簡單
+            print(f"*(系統)* 等級提升！目前等級: {self.level}，屬性獲得全面提升。")
 
     def learn_skill(self, skill_name: str, initial_level: int = 1):
         """學習新技能或提升現有技能等級"""
@@ -80,6 +111,22 @@ class Character:
             self.skills[skill_name] += 1
         else:
             self.skills[skill_name] = initial_level
+
+    def add_item(self, item_name: str, amount: int = 1):
+        """獲得物品"""
+        if item_name in self.inventory:
+            self.inventory[item_name] += amount
+        else:
+            self.inventory[item_name] = amount
+
+    def remove_item(self, item_name: str, amount: int = 1) -> bool:
+        """消耗物品，返回是否成功"""
+        if item_name in self.inventory and self.inventory[item_name] >= amount:
+            self.inventory[item_name] -= amount
+            if self.inventory[item_name] <= 0:
+                del self.inventory[item_name]
+            return True
+        return False
 
     def heal(self, hp_amount: int = 0, mp_amount: int = 0):
         """恢復生命與法力"""
@@ -94,12 +141,14 @@ class Character:
     def get_status_report(self) -> str:
         """生成角色狀態文字報告"""
         report = f"=== {self.name} 的狀態卡 ===\n"
-        report += f"等級: {self.level} | 經驗值: {self.exp}/{self.level * 100}\n"
+        next_exp = self._get_exp_required(self.level)
+        report += f"等級: {self.level} | 經驗值: {self.exp}/{next_exp}\n"
         report += f"HP: {self.hp}/{self.max_hp} | MP: {self.mp}/{self.max_mp}\n"
         report += f"資金: {self.money} 金幣\n"
         report += "--- 屬性 ---\n"
         for stat, val in self.stats.items():
-            report += f"{stat}: {val}\t"
+            label = STAT_LABELS.get(stat, "")
+            report += f"{stat} ({label}): {val}\n"
         report += "\n--- 技能 ---\n"
         if not self.skills:
             report += "無\n"

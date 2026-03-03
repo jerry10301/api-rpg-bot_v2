@@ -9,6 +9,9 @@ def print_help():
 /questlog   - 查看目前接取的任務與進度
 /explore    - 隨機接取一個符合當前等級的任務
 /quest [id] - 找 NPC 接取指定的任務 (如 /quest quest_hunt_slime)
+/items      - 🎒 查看目前擁有的物品
+/skills     - 🔮 查看目前習得的技能
+/use [id]   - 🧪 使用物品 (如 /use 小紅水)
 /work       - 🌟 執行接取的一般任務 (非討伐)
 /findmonst  - 🌟 尋找怪物並進入戰鬥模式
 /turnin [id]- 🌟 回報已完成的任務 (如 /turnin quest_hunt_slime)
@@ -49,6 +52,17 @@ def main():
             print(engine.handle_questlog())
         elif cmd_line == "/explore":
             print(engine.handle_random_quest())
+        elif cmd_line == "/items":
+            print(engine.handle_items())
+        elif cmd_line == "/skills":
+            print(engine.handle_skills())
+        elif cmd_line.startswith("/use"):
+            parts = cmd_line.split(" ", 1)
+            if len(parts) > 1:
+                item_id = parts[1].strip()
+                print(engine.handle_use_item(item_id))
+            else:
+                print("錯誤: 請提供物品名稱或 ID。例如 /use 小紅水")
         elif cmd_line == "/findmonst":
             print(engine.handle_findmonst())
         elif cmd_line.startswith("/quest"):

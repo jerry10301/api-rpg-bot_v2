@@ -1,0 +1,23 @@
+{
+    "MinorHealthPotion": {
+        "name": "小紅水",
+        "description": "恢復 30 點生命值。",
+        "hp_restore": 30,
+        "mp_restore": 0,
+        "price": 50
+    },
+    "MinorManaPotion": {
+        "name": "小藍水",
+        "description": "恢復 20 點法力值。",
+        "hp_restore": 0,
+        "mp_restore": 20,
+        "price": 50
+    },
+    "Antidote": {
+        "name": "解毒劑",
+        "description": "雖然目前還沒實作中毒，但這看起來很專業。",
+        "hp_restore": 0,
+        "mp_restore": 0,
+        "price": 30
+    }
+}

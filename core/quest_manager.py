@@ -111,12 +111,27 @@ class QuestManager:
             
         # 處理機率獲得的屬性
         if "chance_stat_increase" in rewards:
-            chance = rewards["chance_stat_increase"].get("chance", 0)
-            if Dice.check_d100(chance):
-                stat = rewards["chance_stat_increase"]["stat"]
-                amount = rewards["chance_stat_increase"]["amount"]
-                character.update_stat(stat, amount)
-                result_data["rewards"]["stat_increase"] = f"{stat} +{amount} (機率觸發)"
+            csi = rewards["chance_stat_increase"]
+            # 統一轉換為清單處理
+            if isinstance(csi, dict):
+                csi_list = [csi]
+            elif isinstance(csi, list):
+                csi_list = csi
+            else:
+                csi_list = []
+
+            increases = []
+            for entry in csi_list:
+                chance = entry.get("chance", 0)
+                if Dice.check_d100(chance):
+                    stat = entry.get("stat")
+                    amount = entry.get("amount", 1)
+                    if stat:
+                        character.update_stat(stat, amount)
+                        increases.append(f"{stat} +{amount}")
+            
+            if increases:
+                result_data["rewards"]["stat_increase"] = ", ".join(increases) + " (機率觸發)"
         else:
             # 原有的隨機屬性提升邏輯 (兼容舊設定)
             stat_req = quest.get("difficulty_stat", "LUK")

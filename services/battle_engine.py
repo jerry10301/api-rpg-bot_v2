@@ -50,7 +50,7 @@ class BattleEngine:
             "money_reward": monster_data.get("money_reward", random.randint(1, 5) + monster_data["attack"])
         }
         
-        return f"\n⚠️ 遭遇戰開始！\n你遇到了一隻【{self.current_monster['name']}】({self.current_monster['description']})！\nHP: {self.current_monster['current_hp']}/{self.current_monster['max_hp']} | 攻擊力: {self.current_monster['attack']}\n(請使用 /attack [動作] 來攻擊牠！)"
+        return f"\n⚠️ 遭遇戰開始！\n你遇到了一隻【{self.current_monster['name']}】({self.current_monster['description']})！\nHP: {self.current_monster['current_hp']}/{self.current_monster['max_hp']} | 攻擊力: {self.current_monster['attack']}\n(請使用 `/attack <動作>` 來發起攻擊，或使用 `/escape` 嘗試逃跑！)"
 
     def process_turn(self, player: Character, action_text: str, player_intent: dict, player_roll: int, player_success: bool) -> tuple[str, bool]:
         """

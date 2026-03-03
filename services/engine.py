@@ -6,15 +6,17 @@ from core.quest_manager import QuestManager
 from services.ollama_client import OllamaClient
 from services.battle_engine import BattleEngine
 from db.player_repository import PlayerRepository
-from db.database import DB_PATH
+from db.database import DB_PATH, init_db
 
 
 class GameEngine:
     def __init__(self, discord_user_id: str = "__local__"):
         self.discord_user_id = discord_user_id
+        init_db(DB_PATH) # 確保資料表與欄位存在
         self._repo = PlayerRepository(DB_PATH)
         self.llm = OllamaClient()
         self.skills_db = self._load_json("data/skills.json")
+        self.items_db = self._load_json("data/items.json")
 
         # ── 從 DB 載入或建立玩家 ──────────────────────────────────────
         player = self._repo.load_player(discord_user_id)
@@ -60,6 +62,71 @@ class GameEngine:
 
     def handle_status(self) -> str:
         return self.player.get_status_report()
+
+    def handle_items(self) -> str:
+        """查看物品欄"""
+        if not self.player.inventory:
+            return "你的物品欄空空如也。"
+        
+        report = "=== 物品欄 ===\n"
+        for item_id, amount in self.player.inventory.items():
+            # 嘗試從 DB 找名稱
+            item_data = self.items_db.get(item_id, {})
+            name = item_data.get("name", item_id)
+            desc = item_data.get("description", "")
+            report += f"• {name} x{amount} | {desc} (ID: {item_id})\n"
+        return report
+
+    def handle_skills(self) -> str:
+        """查看技能清單"""
+        if not self.player.skills:
+            return "你還沒有學會任何技能。"
+        
+        report = "=== 技能清單 ===\n"
+        for skill_id, lv in self.player.skills.items():
+            skill_data = self.skills_db.get(skill_id, {})
+            name = skill_data.get("name", skill_id)
+            mp = skill_data.get("mp_cost", 0)
+            desc = skill_data.get("description", "")
+            report += f"• {name} (Lv.{lv}) | MP消耗: {mp} | {desc}\n"
+        return report
+
+    def handle_use_item(self, item_id: str) -> str:
+        """使用物品"""
+        if item_id not in self.player.inventory:
+            # 嘗試模糊比對（以名稱找 ID）
+            found_id = None
+            for tid, data in self.items_db.items():
+                if data.get("name") == item_id:
+                    found_id = tid
+                    break
+            if found_id and found_id in self.player.inventory:
+                item_id = found_id
+            else:
+                return f"你的物品欄中沒有【{item_id}】。"
+
+        item_data = self.items_db.get(item_id)
+        if not item_data:
+            return f"系統錯誤：找不到物品資料 {item_id}"
+
+        # 執行效果
+        hp_gain = item_data.get("hp_restore", 0)
+        mp_gain = item_data.get("mp_restore", 0)
+        
+        old_hp = self.player.hp
+        old_mp = self.player.mp
+        self.player.heal(hp_amount=hp_gain, mp_amount=mp_gain)
+        
+        actual_hp = self.player.hp - old_hp
+        actual_mp = self.player.mp - old_mp
+        
+        self.player.remove_item(item_id, 1)
+        
+        msg = f"你使用了【{item_data['name']}】。"
+        if actual_hp > 0: msg += f" 恢復了 {actual_hp} 點 HP。"
+        if actual_mp > 0: msg += f" 恢復了 {actual_mp} 點 MP。"
+        
+        return msg
 
     def handle_questlog(self) -> str:
         return self.qm.get_quest_log()
@@ -158,6 +225,9 @@ class GameEngine:
 
     def handle_action(self, action_text: str) -> str:
         """處理一般行動或戰鬥攻擊"""
+        if not self.battle.is_in_battle():
+            return "⚠️ 系統提示：你目前不在戰鬥中！此指令僅能在遭遇戰中使用。\n非戰鬥狀態下，請使用 `/explore` 探索，或 `/work` 執行工作任務。"
+
         available_skills = list(self.player.skills.keys())
 
         print(f"*(系統)* 正在解析動作意圖...")
@@ -184,50 +254,32 @@ class GameEngine:
         roll = Dice.roll_d100()
         success = roll <= target_chance
 
-        # 1. 若在戰鬥中，交由 BattleEngine 處理回合
-        if self.battle.is_in_battle():
-            narrative, monster_dead = self.battle.process_turn(self.player, action_text, intent, roll, success)
-            if monster_dead:
-                quest_msgs = self.qm.update_quest_progress("combat", 1)
-                if quest_msgs:
-                    narrative += "\n" + "\n".join(quest_msgs)
-            return narrative
+        # 1. 在戰鬥中，交由 BattleEngine 處理回合
+        narrative, monster_dead = self.battle.process_turn(self.player, action_text, intent, roll, success)
+        if monster_dead:
+            quest_msgs = self.qm.update_quest_progress("combat", 1)
+            if quest_msgs:
+                narrative += "\n" + "\n".join(quest_msgs)
+        return narrative
 
-        # 2. 不在戰鬥中，執行一般判定
-        result_data = {
-            "intent": intent,
-            "target_chance": target_chance,
-            "roll": roll,
-            "success": success
+    def handle_escape(self) -> str:
+        """處理逃跑指令 (繞過 LLM 解析)"""
+        if not self.battle.is_in_battle():
+            return "你目前並不在戰鬥中！"
+
+        print(f"*(系統)* 玩家嘗試逃跑...")
+        intent = {
+            "action_type": "flee",
+            "required_stat": "DEX",
+            "is_valid": True
         }
         
-        # 非戰鬥狀態防呆提醒
-        non_combat_notice = "⚠️ **(系統提醒：目前不在戰鬥狀態，此行動將作為一般冒險行動判定)**\n\n"
+        stat_val = self.player.stats.get("DEX", 10)
+        # 逃跑基礎成功率調整，依賴敏捷
+        target_chance = max(1, min(99, (stat_val * 6) + 20))
+        roll = Dice.roll_d100()
+        success = roll <= target_chance
 
-        if success and action_type == "magic" and intent.get("skill_used"):
-            skill_name = intent.get("skill_used")
-            skill_data = self.skills_db.get(skill_name, {})
-            if skill_data.get("is_healing"):
-                heal_dice = skill_data.get("heal_dice", "1d6")
-                base_heal = Dice.roll(heal_dice)
-                heal_multiplier = skill_data.get("heal_multiplier", 1.0)
-                heal_amount = int(base_heal * heal_multiplier)
-                self.player.heal(hp_amount=heal_amount)
-                print(f"*(系統)* 玩家使用了 {skill_name}，恢復了 {heal_amount} 點 HP。")
-                result_data["effect_applied"] = f"恢復了 {heal_amount} 點 HP"
-
-        print(f"*(系統)* 正在生成動作敘事...")
-        narrative = self.llm.generate_combat_narrative(action_text, result_data)
-
-        sys_msg = f"[系統判定] 進行 {req_stat} 檢定 (目標<={target_chance}, 實際擲出 {roll}) -> "
-        sys_msg += "【成功】\n" if success else "【失敗】\n"
-
-        if success and "effect_applied" in result_data:
-            sys_msg += f"[效果生效] {result_data['effect_applied']}\n"
-
-        if success:
-            quest_msgs = self.qm.update_quest_progress("action", 1)
-            if quest_msgs:
-                sys_msg += "\n" + "\n".join(quest_msgs)
-
-        return f"{non_combat_notice}{narrative}\n\n{sys_msg}"
+        action_text = "我轉身就跑！"
+        narrative, monster_dead = self.battle.process_turn(self.player, action_text, intent, roll, success)
+        return narrative

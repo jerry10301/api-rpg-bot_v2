@@ -164,7 +164,7 @@ class RPGCommands(commands.Cog):
     # =================================================================
     # /attack <動作> — 攻擊 / 行動
     # =================================================================
-    @app_commands.command(name="attack", description="⚔️ 嘗試進行任何行動或攻擊（戰鬥中為回合行動）")
+    @app_commands.command(name="attack", description="⚔️ 攻擊或行動（僅限戰鬥中使用）")
     @app_commands.describe(action="動作描述，例如「揮拳打向史萊姆」或「施放火球術」")
     async def attack(self, interaction: discord.Interaction, action: str):
         user_id = str(interaction.user.id)
@@ -177,6 +177,24 @@ class RPGCommands(commands.Cog):
         await interaction.response.defer()
         engine = session_manager.get_or_create_session(user_id)
         result = engine.handle_action(action)
+        session_manager.flush_session(user_id)
+        await interaction.followup.send(embed=fmt.action_embed(result))
+
+    # =================================================================
+    # /escape — 逃跑 (繞過 LLM)
+    # =================================================================
+    @app_commands.command(name="escape", description="🏃‍♂️ 嘗試從戰鬥中逃跑（依賴敏捷檢定）")
+    async def escape(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        if not self._require_registered(interaction):
+            await interaction.response.send_message(
+                embed=fmt.error_embed("請先使用 `/register` 建立角色！"), ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+        engine = session_manager.get_or_create_session(user_id)
+        result = engine.handle_escape()
         session_manager.flush_session(user_id)
         await interaction.followup.send(embed=fmt.action_embed(result))
 
@@ -249,7 +267,8 @@ class RPGCommands(commands.Cog):
             name="⚔️ 戰鬥",
             value=(
                 "`/findmonst` — 尋找怪物\n"
-                "`/attack <動作>` — 攻擊或行動"
+                "`/attack <動作>` — 攻擊或行動（戰鬥中）\n"
+                "`/escape` — 嘗試逃離戰鬥"
             ),
             inline=False
         )

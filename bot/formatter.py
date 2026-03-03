@@ -24,6 +24,29 @@ def status_embed(text: str, player_name: str) -> discord.Embed:
     return embed
 
 
+    return embed
+
+
+def items_embed(text: str) -> discord.Embed:
+    """物品欄 Embed"""
+    embed = discord.Embed(
+        title="🎒 物品欄",
+        description=f"```\n{text}\n```",
+        color=COLOR_INFO
+    )
+    return embed
+
+
+def skills_embed(text: str) -> discord.Embed:
+    """技能清單 Embed"""
+    embed = discord.Embed(
+        title="🔮 技能清單",
+        description=f"```\n{text}\n```",
+        color=COLOR_INFO
+    )
+    return embed
+
+
 def questlog_embed(text: str) -> discord.Embed:
     """任務日誌 Embed"""
     embed = discord.Embed(
