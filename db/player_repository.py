@@ -255,6 +255,34 @@ class PlayerRepository:
             conn.close()
 
     # =========================================================
+    # 排行榜查詢
+    # =========================================================
+
+    def get_top_players_by_level(self, limit: int = 10) -> list[dict]:
+        """取得等級排行榜（依據 level descending, exp descending 排序）"""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT name, level, exp FROM players ORDER BY level DESC, exp DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+            return [{"name": r["name"], "level": r["level"], "exp": r["exp"]} for r in rows]
+        finally:
+            conn.close()
+
+    def get_top_players_by_coin(self, limit: int = 10) -> list[dict]:
+        """取得財富排行榜（依據 money descending 排序）"""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT name, money FROM players ORDER BY money DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+            return [{"name": r["name"], "money": r["money"]} for r in rows]
+        finally:
+            conn.close()
+
+    # =========================================================
     # 戰鬥狀態
     # =========================================================
 

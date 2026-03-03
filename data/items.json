@@ -19,5 +19,10 @@
         "hp_restore": 0,
         "mp_restore": 0,
         "price": 30
+    },
+    "SkillNotebook": {
+        "name": "技能筆記本",
+        "description": "可以將一個指定技能寫入其中。寫入後會變成心得筆記。",
+        "price": 500
     }
 }

@@ -70,44 +70,148 @@ class GameEngine:
         
         report = "=== 物品欄 ===\n"
         for item_id, amount in self.player.inventory.items():
-            # 嘗試從 DB 找名稱
-            item_data = self.items_db.get(item_id, {})
-            name = item_data.get("name", item_id)
-            desc = item_data.get("description", "")
-            report += f"• {name} x{amount} | {desc} (ID: {item_id})\n"
+            if item_id.startswith("Note:"):
+                skill_id = item_id[5:]
+                skill_name = self.skills_db.get(skill_id, {}).get("name", skill_id)
+                name = "心得筆記"
+                desc = f"記載著【{skill_name}】的學習心得。"
+            else:
+                item_data = self.items_db.get(item_id, {})
+                name = item_data.get("name", item_id)
+                desc = item_data.get("description", "")
+            report += f"• {name} x{amount} | {desc} (ID: `{item_id}`)\n"
         return report
 
     def handle_skills(self) -> str:
-        """查看技能清單"""
+        """查看技能清單（詳細版）"""
         if not self.player.skills:
             return "你還沒有學會任何技能。"
         
-        report = "=== 技能清單 ===\n"
-        for skill_id, lv in self.player.skills.items():
+        lines = [f"=== 📜 {self.player.name} 的技能書 ==="]
+        for skill_id, skill_lvl_data in self.player.skills.items():
             skill_data = self.skills_db.get(skill_id, {})
             name = skill_data.get("name", skill_id)
             mp = skill_data.get("mp_cost", 0)
             desc = skill_data.get("description", "")
-            report += f"• {name} (Lv.{lv}) | MP消耗: {mp} | {desc}\n"
-        return report
+            level = skill_lvl_data.get("level", 1)
+            exp = skill_lvl_data.get("exp", 0)
+            req_exp = level * 100
+            
+            # 命中率計算: (屬性 * 5) + (技能等級 * 10) + 15 + 技能命中修正
+            req_stat = skill_data.get("required_stat", "STR")
+            stat_val = self.player.stats.get(req_stat, 10)
+            accuracy_penalty = skill_data.get("accuracy_penalty", 0)
+            hit_chance = max(1, min(99, stat_val * 5 + level * 10 + 15 + accuracy_penalty))
+            hit_str = f"{hit_chance}%"
+            if accuracy_penalty < 0:
+                hit_str += f" (含修正 {accuracy_penalty}%)"
+            
+            # 傷害資訊
+            dmg_dice = skill_data.get("damage_dice", "")
+            dmg_mult = skill_data.get("damage_multiplier", 1.0)
+            level_bonus_pct = int((level - 1) * 15)
+            
+            # 元素
+            element = skill_data.get("element", "none")
+            element_icons = {
+                "fire": "🔥", "water": "💧", "wind": "🌀", "earth": "🌍",
+                "thunder": "⚡", "ice": "❄️", "light": "✨", "dark": "🌑", "none": ""
+            }
+            icon = element_icons.get(element, "🗡️")
+            
+            # 狀態效果
+            status_effect = skill_data.get("status_effect")
+            effect_chance = skill_data.get("effect_chance", 0)
+            
+            # 發明者
+            creator = skill_data.get("creator")
+            
+            # 是否為治癒技能
+            is_healing = skill_data.get("is_healing", False)
+            
+            lines.append(f"")
+            lines.append(f"{icon or '🗡️'} **{name}** (`{skill_id}`)")
+            lines.append(f"Lv.{level} | 熟練度: {exp}/{req_exp} | 消耗: {mp} MP")
+            if is_healing:
+                heal_dice = skill_data.get("heal_dice", "")
+                lines.append(f"• 效果: 恢復 {heal_dice} 點 HP")
+            elif dmg_dice:
+                lines.append(f"• 威力: {dmg_dice} × {dmg_mult} (+等級加成 {level_bonus_pct}%)")
+            lines.append(f"• 命中率: {hit_str}")
+            if element and element != "none":
+                lines.append(f"• 元素: {element}")
+            if status_effect and effect_chance:
+                lines.append(f"• 效果: {effect_chance}% 機率造成【{status_effect}】")
+            if creator:
+                lines.append(f"• 發明者: {creator}")
+            lines.append(f"• 描述: {desc}")
+        
+        lines.append(f"")
+        lines.append(f"─── 使用 `/skill <技能ID> <動作描述>` 來施放技能 ───")
+        return "\n".join(lines)
 
-    def handle_use_item(self, item_id: str) -> str:
+    def handle_use_item(self, item_id: str, extra_arg: str = None) -> str:
         """使用物品"""
         if item_id not in self.player.inventory:
             # 嘗試模糊比對（以名稱找 ID）
             found_id = None
             for tid, data in self.items_db.items():
                 if data.get("name") == item_id:
-                    found_id = tid
-                    break
+                    if tid in self.player.inventory:
+                        found_id = tid
+                        break
+            
+            if not found_id and item_id == "心得筆記":
+                for tid in self.player.inventory:
+                    if tid.startswith("Note:"):
+                        found_id = tid
+                        break
+            
             if found_id and found_id in self.player.inventory:
                 item_id = found_id
             else:
                 return f"你的物品欄中沒有【{item_id}】。"
 
+        if item_id.startswith("Note:"):
+            skill_id = item_id[5:]
+            skill_data = self.skills_db.get(skill_id)
+            if not skill_data:
+                return f"❌ 系統錯誤：找不到技能資料 {skill_id}"
+            
+            skill_name = skill_data.get("name", skill_id)
+            if skill_id in self.player.skills:
+                return f"❌ 你已經學會【{skill_name}】了，無法再透過心得筆記學習。"
+            
+            self.player.learn_skill(skill_id, 1)
+            self.player.remove_item(item_id, 1)
+            return f"📖 你閱讀了心得筆記... 恭喜！你學會了新技能：**【{skill_name}】**！"
+
         item_data = self.items_db.get(item_id)
         if not item_data:
             return f"系統錯誤：找不到物品資料 {item_id}"
+
+        if item_id == "SkillNotebook":
+            if not extra_arg:
+                return "❌ 請指定要寫入的技能名稱或 ID。例如：`/use 技能筆記本 火球術`"
+            
+            target_skill_id = None
+            if extra_arg in self.player.skills:
+                target_skill_id = extra_arg
+            else:
+                for sid, data in self.skills_db.items():
+                    if data.get("name") == extra_arg and sid in self.player.skills:
+                        target_skill_id = sid
+                        break
+            
+            if not target_skill_id:
+                return f"❌ 你沒有學會技能【{extra_arg}】。"
+            
+            skill_name = self.skills_db.get(target_skill_id, {}).get("name", target_skill_id)
+            
+            self.player.remove_item(item_id, 1)
+            note_id = f"Note:{target_skill_id}"
+            self.player.add_item(note_id, 1)
+            return f"✍️ 你將【{skill_name}】的奧秘寫入了筆記本。獲得了一本「心得筆記」！"
 
         # 執行效果
         hp_gain = item_data.get("hp_restore", 0)
@@ -128,8 +232,177 @@ class GameEngine:
         
         return msg
 
+    def handle_give_coin(self, target_user_id: str, amount: int) -> str:
+        """轉移金幣給其他玩家"""
+        if amount <= 0:
+            return "❌ 金額必須大於 0。"
+        if self.discord_user_id == target_user_id:
+            return "❌ 你不能將金幣轉移給自己。"
+
+        target_player = self._repo.load_player(target_user_id)
+        if not target_player:
+            return "❌ 找不到指定的玩家。"
+
+        if self.player.transfer_money(target_player, amount):
+            self._repo.save_player(target_user_id, target_player)
+            return f"💸 你成功轉移了 {amount} 金幣給 {target_player.name}！"
+        else:
+            return f"❌ 餘額不足！你目前只有 {self.player.money} 金幣。"
+
+    def handle_give_item(self, target_user_id: str, item_id_or_name: str, amount: int) -> str:
+        """轉移物品給其他玩家"""
+        if amount <= 0:
+            return "❌ 數量必須大於 0。"
+        if self.discord_user_id == target_user_id:
+            return "❌ 你不能將物品轉移給自己。"
+
+        target_player = self._repo.load_player(target_user_id)
+        if not target_player:
+            return "❌ 找不到指定的玩家。"
+
+        # 嘗試以 ID 或 名稱 尋找物品
+        item_id = None
+        if item_id_or_name in self.player.inventory:
+            item_id = item_id_or_name
+        else:
+            for tid, data in self.items_db.items():
+                if data.get("name") == item_id_or_name and tid in self.player.inventory:
+                    item_id = tid
+                    break
+        
+        if not item_id:
+            return f"❌ 你沒有【{item_id_or_name}】。"
+
+        item_name = self.items_db.get(item_id, {}).get("name", item_id)
+
+        if self.player.transfer_item(target_player, item_id, amount):
+            self._repo.save_player(target_user_id, target_player)
+            return f"📦 你成功將 {amount} 個【{item_name}】交給了 {target_player.name}！"
+        else:
+            owned = self.player.inventory.get(item_id, 0)
+            return f"❌ 物品數量不足！你目前只有 {owned} 個【{item_name}】。"
+
+    def handle_shop_list(self) -> str:
+        """查看商店商品清單"""
+        lines = ["=== 🛒 商店商品清單 ==="]
+        lines.append(f"你目前擁有: {self.player.money} 金幣")
+        lines.append("")
+        
+        has_items = False
+        for item_id, data in self.items_db.items():
+            price = data.get("price")
+            if price is not None and price > 0:
+                has_items = True
+                name = data.get("name", item_id)
+                desc = data.get("description", "")
+                sell_price = max(1, price // 10)
+                lines.append(f"• **{name}** (ID: `{item_id}`)")
+                lines.append(f"  💰 購買: {price} 金幣 | 販售: {sell_price} 金幣")
+                lines.append(f"  📝 {desc}")
+                
+        if not has_items:
+            return "目前商店沒有販售任何商品。"
+            
+        lines.append("")
+        lines.append("💡 使用 `/shop buy <物品> [數量]` 來購買")
+        lines.append("💡 使用 `/shop sell <物品> [數量]` 來販售 (獲得購買價值的 1/10)")
+        return "\n".join(lines)
+
+    def handle_shop_buy(self, item_name_or_id: str, amount: int = 1) -> str:
+        """從商店購買物品"""
+        if amount <= 0:
+            return "❌ 購買數量必須大於 0。"
+            
+        # 尋找物品
+        item_id = None
+        if item_name_or_id in self.items_db and self.items_db[item_name_or_id].get("price"):
+            item_id = item_name_or_id
+        else:
+            for tid, data in self.items_db.items():
+                if data.get("name") == item_name_or_id and data.get("price"):
+                    item_id = tid
+                    break
+                    
+        if not item_id:
+            return f"❌ 商店沒有販售【{item_name_or_id}】。"
+            
+        item_data = self.items_db[item_id]
+        price = item_data.get("price", 0)
+        total_cost = price * amount
+        
+        if self.player.money < total_cost:
+            return f"❌ 金幣不足！【{item_data.get('name', item_id)}】x{amount} 需要 {total_cost} 金幣，你目前只有 {self.player.money} 金幣。"
+            
+        # 扣錢給物品
+        self.player.money -= total_cost
+        self.player.add_item(item_id, amount)
+        
+        return f"🛒 交易成功！你花費了 {total_cost} 金幣購買了 {amount} 個【{item_data.get('name', item_id)}】。"
+
+    def handle_shop_sell(self, item_name_or_id: str, amount: int = 1) -> str:
+        """賣出物品給商店"""
+        if amount <= 0:
+            return "❌ 販售數量必須大於 0。"
+            
+        # 在玩家物品欄中尋找
+        item_id = None
+        if item_name_or_id in self.player.inventory:
+            item_id = item_name_or_id
+        else:
+            for tid, data in self.items_db.items():
+                if data.get("name") == item_name_or_id and tid in self.player.inventory:
+                    item_id = tid
+                    break
+                    
+        if not item_id:
+            return f"❌ 你的物品欄中沒有【{item_name_or_id}】。"
+            
+        owned_amount = self.player.inventory.get(item_id, 0)
+        if owned_amount < amount:
+            item_name = self.items_db.get(item_id, {}).get("name", item_id)
+            return f"❌ 數量不足！你目前只有 {owned_amount} 個【{item_name}】。"
+            
+        # 計算金幣
+        item_data = self.items_db.get(item_id, {})
+        buy_price = item_data.get("price", 0)
+        if buy_price <= 0:
+            return f"❌ 【{item_data.get('name', item_id)}】無法販售。"
+            
+        sell_price_per_item = max(1, buy_price // 10)
+        total_earned = sell_price_per_item * amount
+        item_name = item_data.get("name", item_id)
+        
+        # 扣除物品、增加金幣
+        if self.player.remove_item(item_id, amount):
+            self.player.gain_money(total_earned)
+            return f"💰 收購成功！你賣出了 {amount} 個【{item_name}】，獲得了 {total_earned} 金幣。"
+        else:
+            return "❌ 系統錯誤：無法扣除物品。"
+
     def handle_questlog(self) -> str:
         return self.qm.get_quest_log()
+
+    def handle_forget_skill(self, skill_id_or_name: str) -> str:
+        """玩家遺忘技能（僅移除個人清單，不影響全域 skills.json）"""
+        # 先嘗試以 skill_id 找，再以中文名找
+        target_id = None
+        if skill_id_or_name in self.player.skills:
+            target_id = skill_id_or_name
+        else:
+            for sid, data in self.skills_db.items():
+                if data.get("name") == skill_id_or_name and sid in self.player.skills:
+                    target_id = sid
+                    break
+        
+        if not target_id:
+            return f"❌ 你沒有學會技能【{skill_id_or_name}】。"
+        
+        skill_name = self.skills_db.get(target_id, {}).get("name", target_id)
+        del self.player.skills[target_id]
+        return (
+            f"😶 你選擇遺忘了技能【{skill_name}】。\n"
+            f"這個技能仍然存在於世界之中，說不定未來某天你會再次習得它。"
+        )
 
     def handle_quest(self, quest_id: str) -> str:
         """接取任務"""
@@ -232,35 +505,115 @@ class GameEngine:
 
         print(f"*(系統)* 正在解析動作意圖...")
         intent = self.llm.parse_intent(action_text, available_skills)
+        print(f"*(系統)* 意圖解析結果: {json.dumps(intent, ensure_ascii=False)}")
 
+        # is_valid 團已由 LLM 後處理強制為 True，這裡指主要拿來抦掉意圖解析完全失敗的稏有狀況
         if not intent.get("is_valid", False):
             return f"動作無效: {intent.get('reason')}"
 
         action_type = intent.get("action_type")
         req_stat = intent.get("required_stat", "STR")
         stat_val = self.player.stats.get(req_stat, 10)
-        skill_bonus = 0
+        accuracy_penalty = 0
 
         if action_type == "magic" and intent.get("skill_used"):
             skill_name = intent.get("skill_used")
-            skill_bonus = self.player.skills.get(skill_name, 0)
-            mp_cost = self.skills_db.get(skill_name, {}).get("mp_cost", 0)
-            if self.player.mp < mp_cost:
-                return f"系統提示: MP 不足！無法施放 {skill_name}。"
-            self.player.mp -= mp_cost
+            skill_def = self.skills_db.get(skill_name, {})
+            accuracy_penalty = skill_def.get("accuracy_penalty", 0)
 
-        # 基礎成功率從 (stat * 5) 上調，增加 +15% 基礎命中
-        target_chance = max(1, min(99, (stat_val * 5) + (skill_bonus * 10) + 15))
+            # 只有已學會的技能才會消耗 MP。未學会的技能則当一般動作處理。
+            if skill_name in self.player.skills and skill_def:
+                mp_cost = skill_def.get("mp_cost", 0)
+                if self.player.mp < mp_cost:
+                    return f"系統提示: MP 不足！無法施放【{skill_def.get('name', skill_name)}】（需要 {mp_cost} MP）。"
+                self.player.mp -= mp_cost
+
+        # 命中率公式：(屬性 * 5) + (技能等級 * 10) + 15 + 技能命中修正
+        skill_level = self.player.skills.get(intent.get("skill_used", ""), {}).get("level", 1) if intent.get("skill_used") else 1
+        target_chance = max(1, min(99, (stat_val * 5) + (skill_level * 10) + 15 + accuracy_penalty))
         roll = Dice.roll_d100()
         success = roll <= target_chance
+        
+        print(f"*(系統)* 命中判定: 需求 {target_chance}% | 擲骰 {roll} | {'成功' if success else '失敗'}")
+
+        def _sync_skill(skill_id: str, skill_data: dict):
+            """新發明技能後同步 engine 的 skills_db"""
+            self.skills_db[skill_id] = skill_data
 
         # 1. 在戰鬥中，交由 BattleEngine 處理回合
-        narrative, monster_dead = self.battle.process_turn(self.player, action_text, intent, roll, success)
+        narrative, monster_dead = self.battle.process_turn(
+            self.player, action_text, intent, roll, success,
+            on_skill_learned=_sync_skill
+        )
         if monster_dead:
             quest_msgs = self.qm.update_quest_progress("combat", 1)
             if quest_msgs:
                 narrative += "\n" + "\n".join(quest_msgs)
         return narrative
+
+    def handle_skill_use(self, skill_id_or_name: str, action_text: str) -> str:
+        """在戰鬥中強制指定使用特定技能"""
+        if not self.battle.is_in_battle():
+            return "⚠️ 你目前不在戰鬥中！"
+
+        # 解析 skill_id
+        target_id = None
+        if skill_id_or_name in self.player.skills:
+            target_id = skill_id_or_name
+        else:
+            for sid, data in self.skills_db.items():
+                if data.get("name") == skill_id_or_name and sid in self.player.skills:
+                    target_id = sid
+                    break
+
+        if not target_id:
+            return f"❌ 你沒有學會技能【{skill_id_or_name}】，或該技能不在資料庫中。"
+
+        skill_data = self.skills_db.get(target_id, {})
+        skill_name = skill_data.get("name", target_id)
+        req_stat = skill_data.get("required_stat", "STR")
+        mp_cost = skill_data.get("mp_cost", 0)
+        accuracy_penalty = skill_data.get("accuracy_penalty", 0)
+
+        if self.player.mp < mp_cost:
+            return f"❌ MP 不足！施放【{skill_name}】需要 {mp_cost} MP，你目前只有 {self.player.mp} MP。"
+        self.player.mp -= mp_cost
+
+        stat_val = self.player.stats.get(req_stat, 10)
+        skill_level = self.player.skills[target_id].get("level", 1)
+        target_chance = max(1, min(99, stat_val * 5 + skill_level * 10 + 15 + accuracy_penalty))
+        roll = Dice.roll_d100()
+        success = roll <= target_chance
+
+        intent = {
+            "action_type": "magic",
+            "skill_used": target_id,
+            "is_valid": True,
+            "required_stat": req_stat,
+            "difficulty": target_chance,
+            "reason": f"玩家強制施放技能 {skill_name}"
+        }
+
+        def _sync_skill(skill_id: str, skill_data: dict):
+            self.skills_db[skill_id] = skill_data
+
+        narrative, monster_dead = self.battle.process_turn(
+            self.player, action_text or f"施放{skill_name}！", intent, roll, success,
+            on_skill_learned=_sync_skill
+        )
+        if monster_dead:
+            quest_msgs = self.qm.update_quest_progress("combat", 1)
+            if quest_msgs:
+                narrative += "\n" + "\n".join(quest_msgs)
+        return narrative
+
+    def handle_rank_level(self, limit: int = 10) -> list[dict]:
+        """取得等級排行榜"""
+        return self._repo.get_top_players_by_level(limit=limit)
+
+    def handle_rank_coin(self, limit: int = 10) -> list[dict]:
+        """取得財富排行榜"""
+        return self._repo.get_top_players_by_coin(limit=limit)
 
     def handle_escape(self) -> str:
         """處理逃跑指令 (繞過 LLM 解析)"""

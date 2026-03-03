@@ -20,6 +20,13 @@ class BattleEngine:
         with open(full_path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
+    def _save_skills_db(self):
+        """將 skills_db 存回 data/skills.json"""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        full_path = os.path.join(base_dir, "data/skills.json")
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(self.skills_db, f, ensure_ascii=False, indent=4)
+
     def is_in_battle(self) -> bool:
         return self.current_monster is not None
 
@@ -54,9 +61,19 @@ class BattleEngine:
         
         return f"\n⚠️ 遭遇戰開始！\n你遇到了一隻【{self.current_monster['name']}】({self.current_monster['description']})！\nHP: {self.current_monster['current_hp']}/{self.current_monster['max_hp']} | 攻擊力: {self.current_monster['attack']}\n(請使用 `/attack <動作>` 來發起攻擊，或使用 `/escape` 嘗試逃跑！)"
 
-    def process_turn(self, player: Character, action_text: str, player_intent: dict, player_roll: int, player_success: bool) -> tuple[str, bool]:
+    def _calculate_hit_chance(self, stat_value: int, skill_level: int, accuracy_penalty: int = 0) -> int:
+        """
+        計算命中率 (%)
+        公式：(相關屬性 * 5) + (技能等級 * 10) + 15 + 命中修正
+        範圍：1-99
+        """
+        chance = (stat_value * 5) + (skill_level * 10) + 15 + accuracy_penalty
+        return max(1, min(99, chance))
+
+    def process_turn(self, player: Character, action_text: str, player_intent: dict, player_roll: int, player_success: bool, on_skill_learned=None) -> tuple[str, bool]:
         """
         處理戰鬥的一個回合：玩家先手，若怪物沒死則怪物反擊。
+        on_skill_learned: 可選的 callback(skill_id, skill_data)，用於通知 engine 同步 skills_db。
         回傳: (敘事字串, 戰鬥是否結束)
         """
         if not self.is_in_battle():
@@ -96,6 +113,8 @@ class BattleEngine:
         is_defending = (action_type == "defend")
         
         player_damage = 0
+        skill_learned_msg = None  # 學習/發明技能的訊息
+
         if is_battle_over:
             pass # 略過
         elif not can_player_act and not is_fleeing and not is_defending:
@@ -141,37 +160,46 @@ class BattleEngine:
                     
                     player.heal(hp_amount=heal_amount)
                     combat_log.append(f"玩家施展 {skill_name}，恢復了 {heal_amount} 點 HP。")
+                    
+                    # 魔法治癒成功後也有 5% 機率學習技能
+                    skill_learned_msg = self._attempt_skill_learning(player, action_text, on_skill_learned)
                 else:
-                    # 攻擊傷害計算
-                    dmg_dice = skill_data.get("damage_dice", "1d6")
-                    base_dmg = Dice.roll(dmg_dice)
-                    
-                    stat_bonus = player.stats.get(player_intent.get("required_stat", "STR"), 10) // 5
-                    
-                    raw_damage = base_dmg + stat_bonus
-                    
-                    # 應用倍率
-                    multiplier = skill_data.get("damage_multiplier", 1.0)
-                    raw_damage = int(raw_damage * multiplier)
-                    
-                    # 技能等級倍率加成 (每級 +15%)
+                    # ── 攻擊傷害計算 ──
                     skill_level = 1
-                    if action_type == "magic" and skill_name in player.skills:
+                    is_known_skill = (skill_name is not None and skill_name in player.skills and skill_data)
+
+                    if is_known_skill:
+                        # [技能動作] 套用技能倍率 + 等級加成
+                        dmg_dice = skill_data.get("damage_dice", "1d6")
+                        base_dmg = Dice.roll(dmg_dice)
+                        stat_bonus = player.stats.get(player_intent.get("required_stat", "STR"), 10) // 5
+                        raw_damage = base_dmg + stat_bonus
+
+                        multiplier = skill_data.get("damage_multiplier", 1.0)
+                        raw_damage = int(raw_damage * multiplier)
+
                         skill_level = player.skills[skill_name].get("level", 1)
                         # 給予技能熟練度
                         lvl_msg = player.gain_skill_exp(skill_name, 10)
                         if lvl_msg:
                             combat_log.append(lvl_msg)
-                            
-                        # 魔法額外固定加成 (保留原設定)
-                        skill_bonus = skill_level * 2
-                        raw_damage += skill_bonus
-                        
-                    level_multiplier = 1.0 + (skill_level - 1) * 0.15
-                    raw_damage = int(raw_damage * level_multiplier)
+
+                        # 魔法額外固定加成
+                        if action_type == "magic":
+                            raw_damage += skill_level * 2
+
+                        level_multiplier = 1.0 + (skill_level - 1) * 0.15
+                        raw_damage = int(raw_damage * level_multiplier)
+                    else:
+                        # [一般動作] 僅基礎倍率 1.0
+                        dmg_dice = "1d6"
+                        base_dmg = Dice.roll(dmg_dice)
+                        stat_bonus = player.stats.get(player_intent.get("required_stat", "STR"), 10) // 5
+                        raw_damage = base_dmg + stat_bonus
+                        # 基礎倍率 1.0，不套用技能加成
                     
                     # 元素相剋計算
-                    skill_element = skill_data.get("element")
+                    skill_element = skill_data.get("element") if skill_data else None
                     monster_element = m.get("element")
                     element_mult = self._get_element_multiplier(skill_element, monster_element)
                     raw_damage = int(raw_damage * element_mult)
@@ -186,13 +214,16 @@ class BattleEngine:
                     combat_log.append(f"玩家攻擊成功！造成 {player_damage} 點傷害。")
                     
                     # 異常狀態賦予
-                    status_to_apply = skill_data.get("status_effect")
+                    status_to_apply = skill_data.get("status_effect") if skill_data else None
                     if status_to_apply and Dice.check_d100(skill_data.get("effect_chance", 0)):
-                        duration = 3 # 預設 3 回合
+                        duration = 3
                         if status_to_apply == "凍結": duration = random.randint(1, 2)
                         elif status_to_apply == "混亂": duration = 2
                         m["status_effects"][status_to_apply] = max(m["status_effects"].get(status_to_apply, 0), duration)
                         combat_log.append(f"成功使目標進入【{status_to_apply}】狀態！")
+
+                    # 攻擊成功後（物理與魔法），5% 機率學習技能
+                    skill_learned_msg = self._attempt_skill_learning(player, action_text, on_skill_learned)
             else:
                 combat_log.append("玩家動作失敗。")
 
@@ -292,8 +323,85 @@ class BattleEngine:
         if is_battle_over:
             self.current_monster = None # 清除怪物狀態
             
+        # 加入學習/發明訊息
+        if skill_learned_msg:
+            combat_log.append(skill_learned_msg)
+
         full_narrative = f"{narrative}\n{sys_msg}\n" + "\n".join(combat_log)
         return full_narrative, monster_dead
+
+    def _attempt_skill_learning(self, player: Character, action_text: str, on_skill_learned=None) -> str | None:
+        """
+        攻擊成功後，5% 機率學會現有技能或發明新技能。
+        回傳描述訊息或 None。
+        """
+        roll = random.random()
+        print(f"*(系統)* 技能學習判定: 隨機數 {roll:.4f} (需 <= 0.05 才能觸發)")
+        if roll > 0.05:
+            return None
+
+        # 決定學習現有技能或發明新技能 (若玩家技能少，偏向學既有技能)
+        unlearned = [sid for sid in self.skills_db if sid not in player.skills]
+        
+        if unlearned and random.random() < 0.6:
+            # 60% 機率學會現有技能
+            skill_id = random.choice(unlearned)
+            skill_data = self.skills_db[skill_id]
+            player.learn_skill(skill_id)
+            skill_name = skill_data.get("name", skill_id)
+            return f"💡 【技能習得】在戰鬥中，你悟出了新技能【{skill_name}】！"
+        else:
+            # 40% 機率（或無未習得技能時）發明新技能
+            print("*(系統)* 觸發技能發明判定，正在呼叫 LLM 生成新技能...")
+            new_skill = self.llm.invent_skill(
+                player_name=player.name,
+                player_action=action_text,
+                player_level=player.level,
+                player_stats=player.stats
+            )
+            if not new_skill:
+                return None
+
+            skill_id = new_skill.get("skill_id", "")
+            if not skill_id or skill_id in self.skills_db:
+                # ID 衝突或無效，改為學習現有技能
+                if unlearned:
+                    skill_id = random.choice(unlearned)
+                    skill_data = self.skills_db[skill_id]
+                    player.learn_skill(skill_id)
+                    return f"💡 【技能習得】在戰鬥中，你悟出了新技能【{skill_data.get('name', skill_id)}】！"
+                return None
+
+            # 將新技能存入 skills_db
+            skill_entry = {
+                "name": new_skill.get("name", skill_id),
+                "mp_cost": int(new_skill.get("mp_cost", 5)),
+                "required_stat": new_skill.get("required_stat", "STR"),
+                "damage_dice": new_skill.get("damage_dice", "1d6"),
+                "damage_multiplier": float(new_skill.get("damage_multiplier", 1.0)),
+                "accuracy_penalty": int(new_skill.get("accuracy_penalty", 0)),
+                "element": new_skill.get("element", "none"),
+                "status_effect": new_skill.get("status_effect"),
+                "effect_chance": int(new_skill.get("effect_chance", 0)),
+                "description": new_skill.get("description", ""),
+                "creator": player.name
+            }
+            self.skills_db[skill_id] = skill_entry
+            self._save_skills_db()
+
+            # 通知 engine 同步記憶體
+            if on_skill_learned:
+                on_skill_learned(skill_id, skill_entry)
+
+            player.learn_skill(skill_id)
+            skill_name = skill_entry["name"]
+            penalty_str = f"（命中修正 {skill_entry['accuracy_penalty']}%）" if skill_entry["accuracy_penalty"] else ""
+            return (
+                f"✨ 【技能發明】在戰鬥的靈光一閃中，你發明了全新技能【{skill_name}】！"
+                f"{penalty_str}\n"
+                f"MP消耗: {skill_entry['mp_cost']} | {skill_entry['description']}\n"
+                f"你成為了【{skill_name}】技能在這個世界的第一位發明者！"
+            )
 
     def _get_element_multiplier(self, attacker_elem: str, defender_elem: str) -> float:
         """獲取元素傷害倍率"""

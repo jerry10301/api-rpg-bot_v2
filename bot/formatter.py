@@ -38,12 +38,23 @@ def items_embed(text: str) -> discord.Embed:
 
 
 def skills_embed(text: str) -> discord.Embed:
-    """技能清單 Embed"""
+    """技能清單 Embed (舊版，保留相容性)"""
     embed = discord.Embed(
         title="🔮 技能清單",
         description=f"```\n{text}\n```",
         color=COLOR_INFO
     )
+    return embed
+
+
+def skill_list_embed(text: str, player_name: str) -> discord.Embed:
+    """技能書 Embed（詳細版）"""
+    embed = discord.Embed(
+        title=f"📜 {player_name} 的技能書",
+        description=text,
+        color=0x9B59B6  # 紫色，象徵魔法
+    )
+    embed.set_footer(text="💡 使用 /skill <技能ID> 來施放技能 | /forget-skill <技能ID> 遺忘技能")
     return embed
 
 
@@ -110,5 +121,25 @@ def rest_embed(text: str) -> discord.Embed:
         title="😴 休息",
         description=text,
         color=COLOR_SUCCESS
+    )
+    return embed
+
+
+def shop_embed(text: str, title: str = "🛒 商店系統") -> discord.Embed:
+    """商店系統 Embed"""
+    embed = discord.Embed(
+        title=title,
+        description=text,
+        color=0xF1C40F  # 金色/黃色
+    )
+    return embed
+
+
+def rank_embed(text: str, title: str = "🏆 排行榜") -> discord.Embed:
+    """排行榜 Embed"""
+    embed = discord.Embed(
+        title=title,
+        description=f"```\n{text}\n```",
+        color=0xFFD700  # 金色
     )
     return embed

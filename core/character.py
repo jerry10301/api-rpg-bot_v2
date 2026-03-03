@@ -80,6 +80,14 @@ class Character:
         if self.money < 0:
             self.money = 0
 
+    def transfer_money(self, other: 'Character', amount: int) -> bool:
+        """轉移金幣給另一個角色"""
+        if amount <= 0 or self.money < amount:
+            return False
+        self.money -= amount
+        other.gain_money(amount)
+        return True
+
     def gain_exp(self, amount: int):
         self.exp += amount
         self._check_level_up()
@@ -155,6 +163,13 @@ class Character:
                 del self.inventory[item_name]
             return True
         return False
+
+    def transfer_item(self, other: 'Character', item_name: str, amount: int = 1) -> bool:
+        """轉移物品給另一個角色"""
+        if amount <= 0 or not self.remove_item(item_name, amount):
+            return False
+        other.add_item(item_name, amount)
+        return True
 
     def heal(self, hp_amount: int = 0, mp_amount: int = 0):
         """恢復生命與法力"""

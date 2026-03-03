@@ -45,7 +45,7 @@ def player():
 # ======= 玩家技能測試 =======
 
 def test_skill_damage_calculation(battle_engine, player):
-    """玩家施放火球術應對怪物造成傷害"""
+    """玩家施放火球術應對怪物造成傷害（玩家需先學會技能才能套用技能倍率）"""
     battle_engine.current_monster = {
         "name": "Dummy",
         "current_hp": 100,
@@ -57,6 +57,9 @@ def test_skill_damage_calculation(battle_engine, player):
         "defense": 0
     }
 
+    # 玩家必須先學會技能才能套用技能倍率（符合新邏輯）
+    player.learn_skill("Fireball", initial_level=1)
+
     intent = {
         "action_type": "magic",
         "skill_used": "Fireball",
@@ -65,7 +68,7 @@ def test_skill_damage_calculation(battle_engine, player):
 
     # 火球術 2d6 -> 範圍 2-12
     # 倍率 1.5 -> 範圍 3-18
-    # 屬性加成 (INT 10 // 5) = 2 -> (基礎+加成)*倍率 = (2~12 + 2) * 1.5 = 6 ~ 21
+    # 屬性加成 (INT 10 // 5) = 2 -> (2~12 + 2) * 1.5 = 6 ~ 21
     narrative, is_dead = battle_engine.process_turn(player, "施放火球", intent, player_roll=10, player_success=True)
 
     # 檢查怪物 HP 是否減少

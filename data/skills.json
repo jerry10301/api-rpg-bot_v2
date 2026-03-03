@@ -4,7 +4,7 @@
         "mp_cost": 10,
         "required_stat": "INT",
         "damage_dice": "2d6",
-        "damage_multiplier": 2.4,
+        "damage_multiplier": 1.2,
         "element": "fire",
         "status_effect": "燃燒",
         "effect_chance": 30,
@@ -51,5 +51,18 @@
         "status_effect": "凍結",
         "effect_chance": 20,
         "description": "射出寒冰之箭，有機率凍結目標。"
+    },
+    "WaterBlast": {
+        "name": "水球爆裂",
+        "mp_cost": 8,
+        "required_stat": "INT",
+        "damage_dice": "1d8",
+        "damage_multiplier": 1.5,
+        "accuracy_penalty": -5,
+        "element": "water",
+        "status_effect": null,
+        "effect_chance": 0,
+        "description": "召喚水球砸向敵人，造成水元素傷害。",
+        "creator": "年輕的學徒"
     }
 }

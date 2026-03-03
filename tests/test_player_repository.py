@@ -239,3 +239,46 @@ class TestBattleState:
         result = repo.load_battle_state("user_001")
         assert result["name"] == "哥布林王"
         assert result["current_hp"] == 50
+
+# ─────────────────────────────────────────────────────────
+# 排行榜查詢
+# ─────────────────────────────────────────────────────────
+
+class TestPlayerRanking:
+    def test_get_top_players_by_level(self, repo):
+        repo.create_player("user_1", "Player A")  # level 1, exp 0
+        
+        char2 = repo.create_player("user_2", "Player B")
+        char2.level = 5
+        char2.exp = 100
+        repo.save_player("user_2", char2)
+        
+        char3 = repo.create_player("user_3", "Player C")
+        char3.level = 5
+        char3.exp = 200
+        repo.save_player("user_3", char3)
+        
+        top = repo.get_top_players_by_level(limit=2)
+        assert len(top) == 2
+        assert top[0]["name"] == "Player C"
+        assert top[0]["level"] == 5
+        assert top[0]["exp"] == 200
+        assert top[1]["name"] == "Player B"
+
+    def test_get_top_players_by_coin(self, repo):
+        repo.create_player("user_1", "Player A") # money 0
+        
+        char2 = repo.create_player("user_2", "Player B")
+        char2.money = 500
+        repo.save_player("user_2", char2)
+        
+        char3 = repo.create_player("user_3", "Player C")
+        char3.money = 100
+        repo.save_player("user_3", char3)
+        
+        top = repo.get_top_players_by_coin(limit=2)
+        assert len(top) == 2
+        assert top[0]["name"] == "Player B"
+        assert top[0]["money"] == 500
+        assert top[1]["name"] == "Player C"
+        assert top[1]["money"] == 100
