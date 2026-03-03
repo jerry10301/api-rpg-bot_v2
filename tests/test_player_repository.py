@@ -31,7 +31,9 @@ def _init_tables(conn):
             hp INTEGER DEFAULT 0, max_hp INTEGER DEFAULT 0,
             mp INTEGER DEFAULT 0, max_mp INTEGER DEFAULT 0,
             money INTEGER DEFAULT 0, exp INTEGER DEFAULT 0,
-            stats_json TEXT DEFAULT '{}', skills_json TEXT DEFAULT '{}'
+            stat_str INTEGER DEFAULT 10, stat_dex INTEGER DEFAULT 10,
+            stat_con INTEGER DEFAULT 10, stat_int INTEGER DEFAULT 10,
+            stat_wis INTEGER DEFAULT 10, stat_luk INTEGER DEFAULT 10
         )
     """)
     conn.execute("""
@@ -45,6 +47,20 @@ def _init_tables(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS battle_states (
             discord_user_id TEXT PRIMARY KEY, monster_json TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS player_skills (
+            discord_user_id TEXT NOT NULL, skill_id TEXT NOT NULL,
+            level INTEGER DEFAULT 1, exp INTEGER DEFAULT 0,
+            PRIMARY KEY (discord_user_id, skill_id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS player_inventory (
+            discord_user_id TEXT NOT NULL, item_id TEXT NOT NULL,
+            amount INTEGER DEFAULT 1,
+            PRIMARY KEY (discord_user_id, item_id)
         )
     """)
     conn.commit()
@@ -114,7 +130,7 @@ class TestPlayerCRUD:
         assert reloaded.money == 200
         assert reloaded.exp == 50
         assert reloaded.stats["STR"] == 25
-        assert reloaded.skills.get("IceBolt") == 2
+        assert reloaded.skills.get("IceBolt") == {"level": 2, "exp": 0}
         assert reloaded.hp == 100
         assert reloaded.mp == 80
 

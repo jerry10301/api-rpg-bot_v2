@@ -44,8 +44,10 @@ class BattleEngine:
             "current_mp": monster_data.get("mp", 0),
             "attack": monster_data["attack"],
             "defense": monster_data.get("defense", 0),
+            "element": monster_data.get("element"),
             "description": monster_data.get("description", ""),
             "skills": monster_data.get("skills", []),
+            "status_effects": {}, # 怪物異常狀態 { "狀態名稱": 剩餘回合 }
             "exp_reward": monster_data.get("exp_reward", 10 + monster_data["hp"] // 5),
             "money_reward": monster_data.get("money_reward", random.randint(1, 5) + monster_data["attack"])
         }
@@ -61,8 +63,32 @@ class BattleEngine:
             return ("不在戰鬥中。", False)
             
         m = self.current_monster
+        # 確保怪物有 status_effects 和 element 欄位 (向下相容)
+        m.setdefault("status_effects", {})
+        m.setdefault("element", None)
         is_battle_over = False
         combat_log = []
+        
+        # ------- 0. 回合開始狀態結算 -------
+        # 玩家狀態處理
+        player_status_msgs = player.process_status_effects()
+        combat_log.extend(player_status_msgs)
+        if player.hp <= 0:
+            is_battle_over = True
+            
+        # 怪物狀態處理
+        if not is_battle_over:
+            m_status_msgs = self._process_monster_status_effects(m)
+            combat_log.extend(m_status_msgs)
+            if m["current_hp"] <= 0:
+                is_battle_over = True
+                
+        # 檢查玩家是否可以行動 (受凍結、石化等影響)
+        can_player_act = not any(s in player.status_effects for s in ["凍結", "石化"])
+        if can_player_act and "麻痺" in player.status_effects:
+            if random.random() < 0.5: # 麻痺 50% 跳過
+                can_player_act = False
+                combat_log.append("玩家因麻痺而無法動彈！")
         
         # ======= 1. 玩家回合結算 =======
         action_type = player_intent.get("action_type", "physical")
@@ -70,7 +96,11 @@ class BattleEngine:
         is_defending = (action_type == "defend")
         
         player_damage = 0
-        if is_fleeing:
+        if is_battle_over:
+            pass # 略過
+        elif not can_player_act and not is_fleeing and not is_defending:
+            combat_log.append("玩家目前的狀態無法發起攻擊。")
+        elif action_type == "flee": # 改用 elif 避免干擾
             if player_success:
                 combat_log.append("玩家逃跑成功！")
                 is_battle_over = True
@@ -97,6 +127,18 @@ class BattleEngine:
                     heal_multiplier = skill_data.get("heal_multiplier", 1.0)
                     heal_amount = int(base_heal * heal_multiplier)
                     
+                    # 技能等級加成
+                    skill_level = 1
+                    if action_type == "magic" and skill_name in player.skills:
+                        skill_level = player.skills[skill_name].get("level", 1)
+                        # 給予技能熟練度
+                        lvl_msg = player.gain_skill_exp(skill_name, 10)
+                        if lvl_msg:
+                            combat_log.append(lvl_msg)
+                            
+                    level_multiplier = 1.0 + (skill_level - 1) * 0.15
+                    heal_amount = int(heal_amount * level_multiplier)
+                    
                     player.heal(hp_amount=heal_amount)
                     combat_log.append(f"玩家施展 {skill_name}，恢復了 {heal_amount} 點 HP。")
                 else:
@@ -112,14 +154,45 @@ class BattleEngine:
                     multiplier = skill_data.get("damage_multiplier", 1.0)
                     raw_damage = int(raw_damage * multiplier)
                     
-                    if action_type == "magic":
-                        skill_bonus = player.skills.get(skill_name, 0)
-                        raw_damage += skill_bonus * 2
+                    # 技能等級倍率加成 (每級 +15%)
+                    skill_level = 1
+                    if action_type == "magic" and skill_name in player.skills:
+                        skill_level = player.skills[skill_name].get("level", 1)
+                        # 給予技能熟練度
+                        lvl_msg = player.gain_skill_exp(skill_name, 10)
+                        if lvl_msg:
+                            combat_log.append(lvl_msg)
+                            
+                        # 魔法額外固定加成 (保留原設定)
+                        skill_bonus = skill_level * 2
+                        raw_damage += skill_bonus
+                        
+                    level_multiplier = 1.0 + (skill_level - 1) * 0.15
+                    raw_damage = int(raw_damage * level_multiplier)
+                    
+                    # 元素相剋計算
+                    skill_element = skill_data.get("element")
+                    monster_element = m.get("element")
+                    element_mult = self._get_element_multiplier(skill_element, monster_element)
+                    raw_damage = int(raw_damage * element_mult)
+                    if element_mult > 1.0:
+                        combat_log.append(f"元素克制！傷害提升。")
+                    elif element_mult < 1.0:
+                        combat_log.append(f"元素被克...傷害降低。")
                     
                     # 扣除怪防禦
                     player_damage = max(1, raw_damage - m["defense"])
                     m["current_hp"] -= player_damage
                     combat_log.append(f"玩家攻擊成功！造成 {player_damage} 點傷害。")
+                    
+                    # 異常狀態賦予
+                    status_to_apply = skill_data.get("status_effect")
+                    if status_to_apply and Dice.check_d100(skill_data.get("effect_chance", 0)):
+                        duration = 3 # 預設 3 回合
+                        if status_to_apply == "凍結": duration = random.randint(1, 2)
+                        elif status_to_apply == "混亂": duration = 2
+                        m["status_effects"][status_to_apply] = max(m["status_effects"].get(status_to_apply, 0), duration)
+                        combat_log.append(f"成功使目標進入【{status_to_apply}】狀態！")
             else:
                 combat_log.append("玩家動作失敗。")
 
@@ -128,7 +201,15 @@ class BattleEngine:
         
         # ======= 2. 怪物回合結算 =======
         monster_damage = 0
-        if not monster_dead and not is_battle_over:
+        
+        # 檢查怪物是否可以行動
+        can_monster_act = not any(s in m["status_effects"] for s in ["凍結", "石化"])
+        if can_monster_act and "麻痺" in m["status_effects"]:
+            if random.random() < 0.5:
+                can_monster_act = False
+                combat_log.append(f"{m['name']} 因麻痺而無法動彈！")
+
+        if not monster_dead and not is_battle_over and can_monster_act:
             # 怪物反擊簡易判定：依據玩家敏捷閃避 (基礎加乘3倍)
             dodge_chance = player.stats.get("DEX", 10) * 3
             if Dice.check_d100(dodge_chance):
@@ -190,7 +271,7 @@ class BattleEngine:
         # 結算顯示
         sys_msg = (
             f"\n[回合結算] "
-            f"{m['name']} HP: {max(0, m['current_hp'])}/{m['max_hp']} | MP: {m['current_mp']}/{m['max_mp']}"
+            f"{m['name']} HP: {max(0, m['current_hp'])}/{m.get('max_hp', m.get('hp', 0))} | MP: {m['current_mp']}/{m.get('max_mp', m.get('mp', 0))}"
             f"  ///  "
             f"{player.name} HP: {player.hp}/{player.max_hp} | MP: {player.mp}/{player.max_mp}"
         )
@@ -211,5 +292,54 @@ class BattleEngine:
         if is_battle_over:
             self.current_monster = None # 清除怪物狀態
             
-        full_narrative = f"{narrative}\n{sys_msg}"
+        full_narrative = f"{narrative}\n{sys_msg}\n" + "\n".join(combat_log)
         return full_narrative, monster_dead
+
+    def _get_element_multiplier(self, attacker_elem: str, defender_elem: str) -> float:
+        """獲取元素傷害倍率"""
+        if not attacker_elem or not defender_elem:
+            return 1.0
+            
+        counters = {
+            "fire": ["wind", "ice"],
+            "water": ["fire"],
+            "wind": ["earth"],
+            "earth": ["water", "thunder"],
+            "thunder": ["water"],
+            "ice": ["wind"],
+            "light": ["dark"],
+            "dark": ["light"]
+        }
+        
+        if defender_elem in counters.get(attacker_elem, []):
+            return 1.5
+            
+        # 逆向克制 (被克制傷害減半, 可選)
+        if attacker_elem in counters.get(defender_elem, []):
+            return 0.75
+            
+        return 1.0
+
+    def _process_monster_status_effects(self, m: dict) -> list:
+        """處理怪物異常狀態"""
+        messages = []
+        to_remove = []
+        max_hp = m.get("max_hp", m.get("hp", 100))
+        for effect, duration in m["status_effects"].items():
+            if effect == "燃燒":
+                dmg = max(1, int(max_hp * 0.05))
+                m["current_hp"] -= dmg
+                messages.append(f"{m['name']} 受到燃燒傷害 {dmg} 點。")
+            elif effect == "中毒":
+                dmg = 10
+                m["current_hp"] -= dmg
+                messages.append(f"{m['name']} 受到中毒傷害 {dmg} 點。")
+                
+            m["status_effects"][effect] -= 1
+            if m["status_effects"][effect] <= 0:
+                to_remove.append(effect)
+                messages.append(f"{m['name']} 的【{effect}】狀態解除。")
+                
+        for effect in to_remove:
+            del m["status_effects"][effect]
+        return messages

@@ -5,7 +5,10 @@
         "required_stat": "INT",
         "damage_dice": "2d6",
         "damage_multiplier": 2.4,
-        "description": "發射一枚火球攻擊敵人，造成火焰傷害。"
+        "element": "fire",
+        "status_effect": "燃燒",
+        "effect_chance": 30,
+        "description": "發射一枚火球攻擊敵人，造成火焰傷害並有機率使其燃燒。"
     },
     "Heal": {
         "name": "治癒術",
@@ -22,6 +25,31 @@
         "required_stat": "INT",
         "damage_dice": "1d4",
         "damage_multiplier": 1.0,
-        "description": "噴出腐蝕性酸液，對目標造成少量魔法傷害。"
+        "element": "poison",
+        "status_effect": "中毒",
+        "effect_chance": 40,
+        "description": "噴出腐蝕性酸液，有機率使目標中毒。"
+    },
+    "Thunderbolt": {
+        "name": "落雷術",
+        "mp_cost": 12,
+        "required_stat": "INT",
+        "damage_dice": "2d8",
+        "damage_multiplier": 2.0,
+        "element": "thunder",
+        "status_effect": "麻痺",
+        "effect_chance": 25,
+        "description": "召喚落雷攻擊，有機率使目標麻痺。"
+    },
+    "FrostBolt": {
+        "name": "冰箭術",
+        "mp_cost": 8,
+        "required_stat": "INT",
+        "damage_dice": "1d8",
+        "damage_multiplier": 1.8,
+        "element": "ice",
+        "status_effect": "凍結",
+        "effect_chance": 20,
+        "description": "射出寒冰之箭，有機率凍結目標。"
     }
 }

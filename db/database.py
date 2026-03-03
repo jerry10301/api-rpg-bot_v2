@@ -34,6 +34,15 @@ def init_db(db_path: str = DB_PATH):
                 cursor.execute("DROP TABLE IF EXISTS active_quests")
                 cursor.execute("DROP TABLE IF EXISTS battle_states")
         
+        # 檢查 player_skills 是否缺少 exp 欄位 (技能熟練度遷移)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='player_skills'")
+        if cursor.fetchone():
+            cursor.execute("PRAGMA table_info(player_skills)")
+            skill_cols = [info[1] for info in cursor.fetchall()]
+            if "exp" not in skill_cols:
+                print("*(系統)* 檢測到技能表缺少 exp 欄位，正在升級...")
+                cursor.execute("DROP TABLE IF EXISTS player_skills")
+        
         # 1. 玩家角色表 (屬性拆解為獨立欄位)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS players (
@@ -73,6 +82,7 @@ def init_db(db_path: str = DB_PATH):
                 discord_user_id TEXT NOT NULL,
                 skill_id        TEXT NOT NULL,
                 level           INTEGER DEFAULT 1,
+                exp             INTEGER DEFAULT 0,
                 PRIMARY KEY (discord_user_id, skill_id),
                 FOREIGN KEY (discord_user_id) REFERENCES players(discord_user_id) ON DELETE CASCADE
             )

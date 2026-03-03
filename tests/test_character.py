@@ -34,9 +34,10 @@ class TestCharacter(unittest.TestCase):
 
     def test_learn_skill(self):
         self.char.learn_skill("Fireball")
-        self.assertEqual(self.char.skills["Fireball"], 1)
+        self.assertEqual(self.char.skills["Fireball"]["level"], 1)
+        self.assertEqual(self.char.skills["Fireball"]["exp"], 0)
         self.char.learn_skill("Fireball")
-        self.assertEqual(self.char.skills["Fireball"], 2)
+        self.assertEqual(self.char.skills["Fireball"]["level"], 2)
 
     def test_get_status_report(self):
         report = self.char.get_status_report()

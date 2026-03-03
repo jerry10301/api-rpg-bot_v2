@@ -19,6 +19,9 @@ class _NoCloseConn:
     def execute(self, *args, **kwargs):
         return self._conn.execute(*args, **kwargs)
 
+    def executemany(self, *args, **kwargs):
+        return self._conn.executemany(*args, **kwargs)
+
     def commit(self):
         self._conn.commit()
 
@@ -87,9 +90,9 @@ class PlayerRepository:
             ))
 
             # 2. 插入初始技能
-            skill_data = [(user_id, s, l) for s, l in char.skills.items()]
+            skill_data = [(user_id, s, d["level"], d["exp"]) for s, d in char.skills.items()]
             conn.executemany(
-                "INSERT INTO player_skills (discord_user_id, skill_id, level) VALUES (?, ?, ?)",
+                "INSERT INTO player_skills (discord_user_id, skill_id, level, exp) VALUES (?, ?, ?, ?)",
                 skill_data
             )
 
@@ -121,9 +124,9 @@ class PlayerRepository:
 
             # 2. 讀取技能
             skill_rows = conn.execute(
-                "SELECT skill_id, level FROM player_skills WHERE discord_user_id = ?", (user_id,)
+                "SELECT skill_id, level, exp FROM player_skills WHERE discord_user_id = ?", (user_id,)
             ).fetchall()
-            skills = {r["skill_id"]: r["level"] for r in skill_rows}
+            skills = {r["skill_id"]: {"level": r["level"], "exp": r["exp"]} for r in skill_rows}
 
             # 3. 讀取物品
             inv_rows = conn.execute(
@@ -184,9 +187,9 @@ class PlayerRepository:
 
             # 2. 同步技能 (刪除後重新插入最保險且簡單)
             conn.execute("DELETE FROM player_skills WHERE discord_user_id = ?", (user_id,))
-            skill_data = [(user_id, s, l) for s, l in char.skills.items()]
+            skill_data = [(user_id, s, d["level"], d["exp"]) for s, d in char.skills.items()]
             conn.executemany(
-                "INSERT INTO player_skills (discord_user_id, skill_id, level) VALUES (?, ?, ?)",
+                "INSERT INTO player_skills (discord_user_id, skill_id, level, exp) VALUES (?, ?, ?, ?)",
                 skill_data
             )
 

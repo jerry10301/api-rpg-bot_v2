@@ -5,7 +5,8 @@
         "mp": 0,
         "attack": 5,
         "defense": 2,
-        "description": "矮小、狡猾、成群結隊",
+        "element": "earth",
+        "description": "矮小、狡猾、成群結隊，具有大地屬性。",
         "skills": []
     },
     "slime": {
@@ -14,7 +15,8 @@
         "mp": 10,
         "attack": 2,
         "defense": 1,
-        "description": "黏稠、半透明、酸性腐蝕",
+        "element": "water",
+        "description": "黏稠、半透明，具有水屬性。",
         "skills": [
             "AcidSpit"
         ]
@@ -25,7 +27,8 @@
         "mp": 40,
         "attack": 3,
         "defense": 1,
-        "description": "藏匿林間、精通黑魔法",
+        "element": "dark",
+        "description": "藏匿林間、精通黑魔法，具有暗屬性。",
         "exp_reward": 30,
         "money_reward": 12,
         "skills": [

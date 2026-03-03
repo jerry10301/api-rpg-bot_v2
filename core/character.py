@@ -32,11 +32,17 @@ class Character:
         "LUK": 10  # 幸運
     })
     
-    # 技能與熟練度 { "技能名稱": 熟練度等級 }
-    skills: Dict[str, int] = field(default_factory=dict)
+    # 技能與熟練度 { "技能名稱": {"level": int, "exp": int} }
+    skills: Dict[str, dict] = field(default_factory=dict)
+    
+    # 異常狀態 { "狀態名稱": 剩餘回合 }
+    status_effects: Dict[str, int] = field(default_factory=dict)
     
     # 物品欄 { "物品名稱": 數量 }
     inventory: Dict[str, int] = field(default_factory=dict)
+
+    # 元素屬性 (預設無)
+    element: Optional[str] = None
 
     def __post_init__(self):
         """初始化後計算最大生命與法力"""
@@ -108,9 +114,31 @@ class Character:
     def learn_skill(self, skill_name: str, initial_level: int = 1):
         """學習新技能或提升現有技能等級"""
         if skill_name in self.skills:
-            self.skills[skill_name] += 1
+            self.skills[skill_name]["level"] += 1
         else:
-            self.skills[skill_name] = initial_level
+            self.skills[skill_name] = {"level": initial_level, "exp": 0}
+
+    def gain_skill_exp(self, skill_name: str, amount: int = 10) -> Optional[str]:
+        """增加技能熟練度，並處理升級邏輯，回傳升級訊息（若有）"""
+        if skill_name not in self.skills:
+            return None
+            
+        skill_data = self.skills[skill_name]
+        skill_data["exp"] += amount
+        
+        # 升級邏輯：所需經驗 = level * 100
+        level_up_msg = None
+        current_level = skill_data["level"]
+        req_exp = current_level * 100
+        
+        while skill_data["exp"] >= req_exp:
+            skill_data["exp"] -= req_exp
+            skill_data["level"] += 1
+            current_level = skill_data["level"]
+            req_exp = current_level * 100
+            level_up_msg = f"✨ 熟練度突破！你的【{skill_name}】升級到了 Lv.{current_level}！威力提升了！"
+            
+        return level_up_msg
 
     def add_item(self, item_name: str, amount: int = 1):
         """獲得物品"""
@@ -137,6 +165,39 @@ class Character:
         """完全恢復"""
         self.hp = self.max_hp
         self.mp = self.max_mp
+        self.status_effects.clear()
+
+    def apply_status(self, effect_name: str, duration: int):
+        """施加異常狀態"""
+        # 如果已有同名狀態，取較長的持續時間
+        self.status_effects[effect_name] = max(self.status_effects.get(effect_name, 0), duration)
+
+    def process_status_effects(self) -> list:
+        """處理每回合更新的異常狀態效果，回傳訊息清單"""
+        messages = []
+        to_remove = []
+        
+        for effect, duration in self.status_effects.items():
+            # 處理每回合扣血效果 (DOT)
+            if effect == "燃燒":
+                dmg = max(1, int(self.max_hp * 0.05))
+                self.hp = max(0, self.hp - dmg)
+                messages.append(f"燃燒灼痛！失去 {dmg} 點 HP。")
+            elif effect == "中毒":
+                dmg = 10 # 固定的毒傷，可依等級調整
+                self.hp = max(0, self.hp - dmg)
+                messages.append(f"毒發攻心！失去 {dmg} 點 HP。")
+                
+            # 減少持續時間
+            self.status_effects[effect] -= 1
+            if self.status_effects[effect] <= 0:
+                to_remove.append(effect)
+                messages.append(f"狀態【{effect}】已解除。")
+                
+        for effect in to_remove:
+            del self.status_effects[effect]
+            
+        return messages
 
     def get_status_report(self) -> str:
         """生成角色狀態文字報告"""
@@ -152,6 +213,10 @@ class Character:
         report += "\n--- 技能 ---\n"
         if not self.skills:
             report += "無\n"
-        for skill, lvl in self.skills.items():
-            report += f"{skill} (Lv.{lvl})\n"
+        else:
+            for skill, data in self.skills.items():
+                lvl = data.get("level", 1)
+                exp = data.get("exp", 0)
+                req_exp = lvl * 100
+                report += f"{skill} (Lv.{lvl} | Exp: {exp}/{req_exp})\n"
         return report
