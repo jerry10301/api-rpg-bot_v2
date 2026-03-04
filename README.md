@@ -49,7 +49,7 @@ python main.py
 ### 🤖 Discord Bot 模式（正式多人）
 
 ```bash
-python -m bot.bot
+python run_bot.py
 ```
 
 #### Discord Bot 建立步驟
@@ -114,6 +114,13 @@ ai-rpg-bot_v2/
 
 ## 執行測試
 
+
 ```bash
 python -m pytest tests/ -v
 ```
+
+---
+
+## 授權 (License)
+
+本專案採用 [MIT License](LICENSE) 進行授權。
