@@ -1,0 +1,22 @@
+{
+    "Fireball": {
+        "name": "火球術",
+        "mp_cost": 10,
+        "damage_dice": "2d6",
+        "damage_multiplier": 1.5,
+        "required_stat": "INT"
+    },
+    "Heal": {
+        "name": "治癒術",
+        "mp_cost": 5,
+        "heal_dice": "2d4",
+        "is_healing": true,
+        "required_stat": "WIS"
+    },
+    "AcidSpit": {
+        "name": "酸液噴射",
+        "mp_cost": 3,
+        "damage_dice": "1d4",
+        "damage_multiplier": 1.0,
+        "required_stat": "INT"
+    }

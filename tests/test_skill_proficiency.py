@@ -106,6 +106,8 @@ class TestSkillLevelDamageScaling:
         class MockLLM:
             def generate_combat_narrative(self, a, d):
                 return "敘事"
+            def decide_learned_skill(self, **kwargs):
+                return {}
 
         engine = BattleEngine(MockLLM())
         engine.skills_db = {

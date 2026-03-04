@@ -59,9 +59,9 @@ class Character:
         int_val = self.stats.get("INT", 10)
         wis = self.stats.get("WIS", 10)
         
-        # 優化後的計算公式
-        self.max_hp = 100 + (self.level * 20) + (con * 15) + (str_val * 5)
-        self.max_mp = 50 + (self.level * 15) + (wis * 12) + (int_val * 8)
+        # 快節奏戰鬥公式：Lv.1 全屬性10 → HP=78, MP=81
+        self.max_hp = 20 + (self.level * 8) + (con * 4) + (str_val * 1)
+        self.max_mp = 15 + (self.level * 6) + (wis * 4) + (int_val * 2)
     
     def update_stat(self, stat_name: str, amount: int) -> bool:
         """增加或減少特定屬性"""
@@ -92,6 +92,8 @@ class Character:
         self.exp += amount
         self._check_level_up()
 
+    MAX_LEVEL = 30
+
     def _get_exp_required(self, level: int) -> int:
         """計算升至下一級所需的經驗值 (非線性公式: 100 * level^1.5)"""
         return int(100 * (level ** 1.5))
@@ -100,7 +102,7 @@ class Character:
         """檢查是否升級並執行成長邏輯"""
         import random
         
-        while self.exp >= self._get_exp_required(self.level):
+        while self.level < self.MAX_LEVEL and self.exp >= self._get_exp_required(self.level):
             self.exp -= self._get_exp_required(self.level)
             self.level += 1
             
@@ -199,7 +201,7 @@ class Character:
                 self.hp = max(0, self.hp - dmg)
                 messages.append(f"燃燒灼痛！失去 {dmg} 點 HP。")
             elif effect == "中毒":
-                dmg = 10 # 固定的毒傷，可依等級調整
+                dmg = max(1, int(self.max_hp * 0.08))  # 比例制：8% 最大 HP
                 self.hp = max(0, self.hp - dmg)
                 messages.append(f"毒發攻心！失去 {dmg} 點 HP。")
                 
@@ -218,7 +220,10 @@ class Character:
         """生成角色狀態文字報告"""
         report = f"=== {self.name} 的狀態卡 ===\n"
         next_exp = self._get_exp_required(self.level)
-        report += f"等級: {self.level} | 經驗值: {self.exp}/{next_exp}\n"
+        if self.level >= self.MAX_LEVEL:
+            report += f"等級: {self.level} (MAX) | 經驗值: {self.exp} (保留累積中)\n"
+        else:
+            report += f"等級: {self.level} | 經驗值: {self.exp}/{next_exp}\n"
         report += f"HP: {self.hp}/{self.max_hp} | MP: {self.mp}/{self.max_mp}\n"
         report += f"資金: {self.money} 金幣\n"
         report += "--- 屬性 ---\n"

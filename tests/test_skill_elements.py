@@ -110,7 +110,7 @@ def test_frozen_skips_turn(battle_engine):
     # 玩家不能動，但怪物反擊一定命中
     assert player.hp < player.max_hp
 
-def test_monster_status_effect(battle_engine):
+def test_monster_poison_damage(battle_engine):
     player = Character(name="TestPlayer")
     battle_engine.current_monster = {
         "name": "TestMonster",
@@ -118,16 +118,49 @@ def test_monster_status_effect(battle_engine):
         "current_hp": 100,
         "defense": 0,
         "element": "none",
-        "status_effects": {"燃燒": 1},
+        "status_effects": {"中毒": 1},
         "current_mp": 0,
         "attack": 0
     }
-    
-    # 回合開始會處理狀態
-    # player_success=False 確保玩家不會額外造成傷害，只測試燃燒 DOT
+
+    # 中毒比例制：8% of max_hp(100) = 8
     intent = {"action_type": "physical"}
     full_narrative, over = battle_engine.process_turn(player, "等待", intent, 10, False)
-    
-    # 100 - 5 (燃燒 5% max_hp) = 95
-    assert battle_engine.current_monster["current_hp"] == 95
-    assert "TestMonster 受到燃燒傷害" in full_narrative
+
+    # 100 - 8 (中毒 8% max_hp) = 92
+    assert battle_engine.current_monster["current_hp"] == 92
+    assert "受到中毒傷害" in full_narrative
+
+
+def test_player_poison_percentage(battle_engine):
+    """玩家中毒傷害應為 max_hp 的 8%（比例制）"""
+    player = Character(name="TestPlayer")
+    player.max_hp = 100
+    player.hp = 100
+    player.apply_status("中毒", 2)
+
+    messages = player.process_status_effects()
+    # 8% of 100 = 8
+    assert player.hp == 92
+    assert "毒發攻心" in messages[0]
+
+
+def test_poison_scales_with_max_hp(battle_engine):
+    """中毒傷害應隨 max_hp 等比縮放（低 HP 怪物受傷更少）"""
+    # 低 HP 目標
+    player_low = Character(name="WeakPlayer")
+    player_low.max_hp = 15  # 史萊姆等級
+    player_low.hp = 15
+    player_low.apply_status("中毒", 2)
+    player_low.process_status_effects()
+    # 8% of 15 = max(1, 1) = 1
+    assert player_low.hp == 14
+
+    # 高 HP 目標
+    player_high = Character(name="TankPlayer")
+    player_high.max_hp = 120  # 亡靈騎士等級
+    player_high.hp = 120
+    player_high.apply_status("中毒", 2)
+    player_high.process_status_effects()
+    # 8% of 120 = 9
+    assert player_high.hp == 111

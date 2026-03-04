@@ -8,16 +8,20 @@
         "element": "fire",
         "status_effect": "燃燒",
         "effect_chance": 30,
-        "description": "發射一枚火球攻擊敵人，造成火焰傷害並有機率使其燃燒。"
+        "accuracy_penalty": 0,
+        "description": "發射一枚火球攻擊敵人，造成火焰傷害並有機率使其燃燒。",
+        "creator": "系統"
     },
     "Heal": {
         "name": "治癒術",
         "mp_cost": 5,
         "required_stat": "WIS",
-        "heal_dice": "2d4",
-        "heal_multiplier": 1.5,
+        "heal_dice": "3d6",
+        "heal_multiplier": 2.0,
         "is_healing": true,
-        "description": "恢復少量生命值。"
+        "accuracy_penalty": 0,
+        "description": "恢復中量生命值，效果受精神屬性加成。",
+        "creator": "系統"
     },
     "AcidSpit": {
         "name": "酸液噴射",
@@ -25,21 +29,25 @@
         "required_stat": "INT",
         "damage_dice": "1d4",
         "damage_multiplier": 1.0,
-        "element": "poison",
+        "element": "physical",
         "status_effect": "中毒",
         "effect_chance": 40,
-        "description": "噴出腐蝕性酸液，有機率使目標中毒。"
+        "accuracy_penalty": 0,
+        "description": "噴出腐蝕性酸液，有機率使目標中毒。",
+        "creator": "系統"
     },
     "Thunderbolt": {
         "name": "落雷術",
-        "mp_cost": 12,
+        "mp_cost": 15,
         "required_stat": "INT",
         "damage_dice": "2d8",
         "damage_multiplier": 2.0,
         "element": "thunder",
         "status_effect": "麻痺",
         "effect_chance": 25,
-        "description": "召喚落雷攻擊，有機率使目標麻痺。"
+        "accuracy_penalty": -15,
+        "description": "召喚落雷攻擊，威力強大但難以精準瞄準，有機率使目標麻痺。",
+        "creator": "系統"
     },
     "FrostBolt": {
         "name": "冰箭術",
@@ -50,7 +58,9 @@
         "element": "ice",
         "status_effect": "凍結",
         "effect_chance": 20,
-        "description": "射出寒冰之箭，有機率凍結目標。"
+        "accuracy_penalty": 0,
+        "description": "射出寒冰之箭，有機率凍結目標。",
+        "creator": "系統"
     },
     "WaterBlast": {
         "name": "水球爆裂",
@@ -64,5 +74,135 @@
         "effect_chance": 0,
         "description": "召喚水球砸向敵人，造成水元素傷害。",
         "creator": "年輕的學徒"
+    },
+    "SteelWingAttack": {
+        "name": "鋼翼斬擊",
+        "mp_cost": 5,
+        "required_stat": "INT",
+        "damage_dice": "1d8",
+        "damage_multiplier": 1.2,
+        "accuracy_penalty": 0,
+        "element": "physical",
+        "status_effect": null,
+        "effect_chance": 0,
+        "description": "召喚山雀使用鋼翼進行強力斬擊。",
+        "creator": "蹦蹦松鼠"
+    },
+    "SteelWingStrike": {
+        "name": "鋼翼斬",
+        "mp_cost": 5,
+        "required_stat": "INT",
+        "damage_dice": "1d10",
+        "damage_multiplier": 1.5,
+        "accuracy_penalty": 0,
+        "element": "physical",
+        "status_effect": null,
+        "effect_chance": 0,
+        "description": "召喚山雀以鋼翼進行強力斬擊，造成1d10+1.5倍傷害。",
+        "creator": "蹦蹦松鼠"
+    },
+    "ShadowDash": {
+        "name": "暗影突襲",
+        "mp_cost": 6,
+        "required_stat": "DEX",
+        "damage_dice": "1d10",
+        "damage_multiplier": 1.3,
+        "element": "dark",
+        "status_effect": null,
+        "effect_chance": 0,
+        "accuracy_penalty": -2,
+        "description": "融入陰影並瞬間發動奇襲，高流暢度讓敵人難以招架。",
+        "creator": "暗影獵手"
+    },
+    "HeatWave": {
+        "name": "熱浪襲捲",
+        "mp_cost": 15,
+        "required_stat": "STR",
+        "damage_dice": "2d6",
+        "damage_multiplier": 1.1,
+        "element": "fire",
+        "status_effect": "燃燒",
+        "effect_chance": 50,
+        "accuracy_penalty": 0,
+        "description": "從身體噴發出高溫熱浪，對大範圍敵人造成灼傷。",
+        "creator": "餘燼魔像"
+    },
+    "WindBlade": {
+        "name": "真空鐮鼬",
+        "mp_cost": 7,
+        "required_stat": "INT",
+        "damage_dice": "2d4",
+        "damage_multiplier": 1.4,
+        "element": "wind",
+        "status_effect": null,
+        "effect_chance": 0,
+        "accuracy_penalty": 0,
+        "description": "壓縮大氣射出銳利的風刃，能輕易切開厚重的皮毛。",
+        "creator": "風暴巨鷹"
+    },
+    "IceLance": {
+        "name": "寒冰長槍",
+        "mp_cost": 10,
+        "required_stat": "INT",
+        "damage_dice": "1d12",
+        "damage_multiplier": 1.6,
+        "element": "ice",
+        "status_effect": null,
+        "effect_chance": 0,
+        "accuracy_penalty": -3,
+        "description": "凝結空氣中的水分形成寒冰長槍，貫穿力強且帶有嚴寒。",
+        "creator": "寒霜精靈"
+    },
+    "DarkSlash": {
+        "name": "暗冥斬擊",
+        "mp_cost": 15,
+        "required_stat": "STR",
+        "damage_dice": "3d6",
+        "damage_multiplier": 1.8,
+        "element": "dark",
+        "status_effect": null,
+        "effect_chance": 0,
+        "accuracy_penalty": -20,
+        "description": "纏繞著死亡氣息的重擊，需要極高技巧才能命中，擊中後會腐蝕對方的意志。",
+        "creator": "亡靈騎士"
+    },
+    "ShieldBash": {
+        "name": "盾牌猛擊",
+        "mp_cost": 4,
+        "required_stat": "STR",
+        "damage_dice": "1d6",
+        "damage_multiplier": 0.8,
+        "element": "physical",
+        "status_effect": null,
+        "effect_chance": 0,
+        "accuracy_penalty": 0,
+        "description": "利用沉重的盾牌撞擊對手，雖然傷害不高但極具威脅。",
+        "creator": "亡靈騎士"
+    },
+    "FearAura": {
+        "name": "恐懼靈氣",
+        "mp_cost": 8,
+        "required_stat": "WIS",
+        "damage_dice": "1d6",
+        "damage_multiplier": 0.8,
+        "element": "dark",
+        "status_effect": null,
+        "effect_chance": 0,
+        "accuracy_penalty": 0,
+        "description": "釋放令人窒息的死亡恐懼，使敵人膽怯退縮、戰鬥意志崩潰，造成精神性暗屬性傷害。",
+        "creator": "亡靈騎士"
+    },
+    "Bite": {
+        "name": "撕咬",
+        "mp_cost": 0,
+        "required_stat": "STR",
+        "damage_dice": "1d6",
+        "damage_multiplier": 1.0,
+        "element": "physical",
+        "status_effect": null,
+        "effect_chance": 0,
+        "accuracy_penalty": 0,
+        "description": "野獸最基本的攻擊方式，簡單卻致命。",
+        "creator": "荒野生物"
     }
 }

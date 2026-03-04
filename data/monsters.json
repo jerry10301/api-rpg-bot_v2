@@ -1,38 +1,151 @@
 {
     "goblin": {
         "name": "哥布林",
-        "hp": 30,
+        "hp": 22,
         "mp": 0,
-        "attack": 5,
-        "defense": 2,
+        "attack": 13,
+        "defense": 0,
         "element": "earth",
         "description": "矮小、狡猾、成群結隊，具有大地屬性。",
+        "exp_reward": 35,
+        "money_reward": 12,
         "skills": []
     },
     "slime": {
         "name": "史萊姆",
-        "hp": 20,
+        "hp": 15,
         "mp": 10,
-        "attack": 2,
-        "defense": 1,
+        "attack": 8,
+        "defense": 0,
         "element": "water",
         "description": "黏稠、半透明，具有水屬性。",
+        "exp_reward": 25,
+        "money_reward": 8,
         "skills": [
             "AcidSpit"
         ]
     },
     "forest_witch": {
         "name": "森林巫婆",
-        "hp": 25,
+        "hp": 20,
         "mp": 40,
-        "attack": 3,
-        "defense": 1,
+        "attack": 10,
+        "defense": 0,
         "element": "dark",
         "description": "藏匿林間、精通黑魔法，具有暗屬性。",
-        "exp_reward": 30,
-        "money_reward": 12,
+        "exp_reward": 40,
+        "money_reward": 15,
         "skills": [
             "Fireball"
+        ]
+    },
+    "shadow_wolf": {
+        "name": "影狼",
+        "hp": 32,
+        "mp": 15,
+        "attack": 17,
+        "defense": 2,
+        "element": "dark",
+        "description": "穿梭在陰影中的獵食者，速度極快，具有暗屬性。",
+        "exp_reward": 60,
+        "money_reward": 25,
+        "skills": [
+            "Bite",
+            "ShadowDash"
+        ]
+    },
+    "ember_golem": {
+        "name": "餘燼魔像",
+        "hp": 75,
+        "mp": 0,
+        "attack": 20,
+        "defense": 8,
+        "element": "fire",
+        "description": "由熾熱岩石構成的守衛，防禦力驚人，具有火屬性。",
+        "exp_reward": 110,
+        "money_reward": 50,
+        "skills": [
+            "Earthquake",
+            "HeatWave"
+        ]
+    },
+    "storm_eagle": {
+        "name": "風暴巨鷹",
+        "hp": 45,
+        "mp": 50,
+        "attack": 16,
+        "defense": 3,
+        "element": "wind",
+        "description": "盤踞高空的猛禽，能操縱氣流，具有風屬性。",
+        "exp_reward": 85,
+        "money_reward": 38,
+        "skills": [
+            "WindBlade",
+            "Tornado"
+        ]
+    },
+    "frost_spirit": {
+        "name": "寒霜精靈",
+        "hp": 28,
+        "mp": 80,
+        "attack": 12,
+        "defense": 2,
+        "element": "ice",
+        "description": "外表空靈的冰之生命體，擅長遠程凍結敵人，具有冰屬性。",
+        "exp_reward": 70,
+        "money_reward": 32,
+        "skills": [
+            "IceLance",
+            "Freeze"
+        ]
+    },
+    "undead_knight": {
+        "name": "亡靈騎士",
+        "hp": 120,
+        "mp": 30,
+        "attack": 28,
+        "defense": 8,
+        "element": "dark",
+        "description": "穿著鏽蝕鎧甲的精英戰士，死後靈魂依然被詛咒束縛。",
+        "exp_reward": 200,
+        "money_reward": 120,
+        "skills": [
+            "DarkSlash",
+            "ShieldBash",
+            "FearAura"
+        ]
+    },
+    "abyssal_demon": {
+        "name": "深淵惡魔",
+        "hp": 450,
+        "mp": 150,
+        "attack": 55,
+        "defense": 25,
+        "element": "dark",
+        "description": "來自深淵的恐怖存在，擁有強大的黑暗魔法與肉體力量。",
+        "exp_reward": 600,
+        "money_reward": 450,
+        "skills": [
+            "DarkSlash",
+            "FearAura",
+            "MeteorStrike"
+        ]
+    },
+    "ancient_creazy_painter_dog": {
+        "name": "瘋狂繪師犬",
+        "hp": 800,
+        "mp": 300,
+        "attack": 70,
+        "defense": 40,
+        "element": "fire",
+        "description": "煉獄七巨首之一，擁有強大的繪畫魔法力量，喜歡用冒險者的鮮血作畫。",
+        "exp_reward": 1200,
+        "money_reward": 1000,
+        "skills": [
+            "Fireball",
+            "Earthquake",
+            "HeatWave",
+            "Tornado"
         ]
     }
 }

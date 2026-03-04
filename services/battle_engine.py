@@ -11,6 +11,7 @@ class BattleEngine:
         self.monsters_db = self._load_data("data/monsters.json")
         self.skills_db = self._load_data("data/skills.json")
         self.current_monster = None
+        self.last_killed_monster_id: str | None = None  # 最後擊杀的怪物 ID
 
     def _load_data(self, filepath: str) -> dict:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,11 +22,13 @@ class BattleEngine:
             return json.load(f)
 
     def _save_skills_db(self):
-        """將 skills_db 存回 data/skills.json"""
+        """將 skills_db 存回 data/skills.json（原子寫入，防止崩潰導致 JSON 損壞）"""
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         full_path = os.path.join(base_dir, "data/skills.json")
-        with open(full_path, 'w', encoding='utf-8') as f:
+        tmp_path = full_path + ".tmp"
+        with open(tmp_path, 'w', encoding='utf-8') as f:
             json.dump(self.skills_db, f, ensure_ascii=False, indent=4)
+        os.replace(tmp_path, full_path)
 
     def is_in_battle(self) -> bool:
         return self.current_monster is not None
@@ -192,9 +195,9 @@ class BattleEngine:
                         raw_damage = int(raw_damage * level_multiplier)
                     else:
                         # [一般動作] 僅基礎倍率 1.0
-                        dmg_dice = "1d6"
+                        dmg_dice = "1d8"
                         base_dmg = Dice.roll(dmg_dice)
-                        stat_bonus = player.stats.get(player_intent.get("required_stat", "STR"), 10) // 5
+                        stat_bonus = player.stats.get(player_intent.get("required_stat", "STR"), 10) // 4
                         raw_damage = base_dmg + stat_bonus
                         # 基礎倍率 1.0，不套用技能加成
                     
@@ -241,8 +244,8 @@ class BattleEngine:
                 combat_log.append(f"{m['name']} 因麻痺而無法動彈！")
 
         if not monster_dead and not is_battle_over and can_monster_act:
-            # 怪物反擊簡易判定：依據玩家敏捷閃避 (基礎加乘3倍)
-            dodge_chance = player.stats.get("DEX", 10) * 3
+            # 怪物反擊簡易判定：依據玩家敏捷閃避 (防禦成功不影響閃避率，最高閃避上限為 60%)
+            dodge_chance = int(min(60, 5 + player.stats.get("DEX", 10) * 1.5))
             if Dice.check_d100(dodge_chance):
                 combat_log.append(f"{m['name']} 嘗試反擊，但被玩家閃避了！")
             else:
@@ -255,12 +258,14 @@ class BattleEngine:
                         skill_data = self.skills_db.get(skill_name, {})
                         mp_cost = skill_data.get("mp_cost", 0)
                         if mp_cost <= m["current_mp"]:
-                            # 扣除 MP 並計算魔法傷害
+                            # 扣除 MP 並計算魔法傷害（同樣扣除玩家防禦，魔法防禦看 WIS）
                             m["current_mp"] -= mp_cost
                             dmg_dice = skill_data.get("damage_dice", "1d4")
                             base_dmg = Dice.roll(dmg_dice)
                             multiplier = skill_data.get("damage_multiplier", 1.0)
-                            monster_damage = max(0, int(base_dmg * multiplier))
+                            raw_skill_dmg = max(0, int(base_dmg * multiplier))
+                            player_magic_def = max(2, player.stats.get("WIS", 10) // 4)
+                            monster_damage = max(0, raw_skill_dmg - player_magic_def)
                             player.hp -= monster_damage
                             skill_display = skill_data.get("name", skill_name)
                             combat_log.append(
@@ -271,10 +276,10 @@ class BattleEngine:
                 if not used_skill:
                     # 普通物理攻擊
                     raw_dmg = m["attack"] + random.randint(0, 2)
-                    # 簡易玩家防禦
-                    player_def = 2
+                    # 玩家防禦由 CON 決定（快節奏平衡公式）
+                    player_def = max(2, player.stats.get("CON", 10) // 4)
                     if is_defending and player_success:
-                        player_def += 5  # 防禦成功減傷增加
+                        player_def += 5  # 防禦成功額外減傷
                     monster_damage = max(0, raw_dmg - player_def)
                     player.hp -= monster_damage
                     combat_log.append(f"{m['name']} 反擊命中！對玩家造成 {monster_damage} 點傷害。")
@@ -321,6 +326,10 @@ class BattleEngine:
             is_battle_over = True
             
         if is_battle_over:
+            if monster_dead and self.current_monster:
+                self.last_killed_monster_id = self.current_monster["id"]  # 記錄擊杀的怪物 ID
+            else:
+                self.last_killed_monster_id = None
             self.current_monster = None # 清除怪物狀態
             
         # 加入學習/發明訊息
@@ -332,58 +341,97 @@ class BattleEngine:
 
     def _attempt_skill_learning(self, player: Character, action_text: str, on_skill_learned=None) -> str | None:
         """
-        攻擊成功後，5% 機率學會現有技能或發明新技能。
+        攻擊成功後，10% 機率學會現有技能或發明新技能（現在由 LLM 決定最貼切的技能）。
+        - 若 LLM 建議的現有技能玩家已學過 → 給予雙倍熟練 EXP
+        - 若 LLM 發明的新技能與現有技能名稱+描述高度相似 → 退回學習最相似現有技能
         回傳描述訊息或 None。
         """
         roll = random.random()
-        print(f"*(系統)* 技能學習判定: 隨機數 {roll:.4f} (需 <= 0.05 才能觸發)")
-        if roll > 0.05:
+        print(f"*(系統)* 技能學習判定: 隨機數 {roll:.4f} (需 <= 0.10 才能觸發)")
+        if roll > 0.10:
             return None
 
-        # 決定學習現有技能或發明新技能 (若玩家技能少，偏向學既有技能)
-        unlearned = [sid for sid in self.skills_db if sid not in player.skills]
-        
-        if unlearned and random.random() < 0.6:
-            # 60% 機率學會現有技能
-            skill_id = random.choice(unlearned)
-            skill_data = self.skills_db[skill_id]
+        # 整理玩家尚未學過的技能資訊，供 LLM 參考
+        unlearned_skills = []
+        all_skills_summary = []
+        for sid, sdata in self.skills_db.items():
+            entry = {
+                "id": sid,
+                "name": sdata.get("name", sid),
+                "description": sdata.get("description", "")
+            }
+            all_skills_summary.append(entry)
+            if sid not in player.skills:
+                unlearned_skills.append(entry)
+
+        print("*(系統)* 觸發技能領悟判定，正在呼叫 LLM 決定最貼近描述的技能...")
+        decision = self.llm.decide_learned_skill(
+            player_name=player.name,
+            player_action=action_text,
+            player_level=player.level,
+            player_stats=player.stats,
+            unlearned_skills=unlearned_skills,
+            all_skills_summary=all_skills_summary
+        )
+
+        if not decision:
+            return None
+
+        learn_type = decision.get("learn_type", "new")
+
+        if learn_type == "existing" and decision.get("skill_id") in self.skills_db:
+            skill_id = decision["skill_id"]
+            skill_name = self.skills_db[skill_id].get("name", skill_id)
+            # 已學過 → 給雙倍熟練 EXP
+            if skill_id in player.skills:
+                lvl_msg = player.gain_skill_exp(skill_id, 20)  # 雙倍 EXP
+                bonus_msg = f"💡 【技能感悟】你對【{skill_name}】有了更深的理解，獲得雙倍熟練經驗！"
+                if lvl_msg:
+                    bonus_msg += f"\n{lvl_msg}"
+                return bonus_msg
+            # 未學過 → 正常學習
             player.learn_skill(skill_id)
-            skill_name = skill_data.get("name", skill_id)
             return f"💡 【技能習得】在戰鬥中，你悟出了新技能【{skill_name}】！"
+
         else:
-            # 40% 機率（或無未習得技能時）發明新技能
-            print("*(系統)* 觸發技能發明判定，正在呼叫 LLM 生成新技能...")
-            new_skill = self.llm.invent_skill(
-                player_name=player.name,
-                player_action=action_text,
-                player_level=player.level,
-                player_stats=player.stats
-            )
-            if not new_skill:
+            # 發明新技能
+            skill_id = decision.get("skill_id", "")
+            # 確保 skill_id 是合法字串（防止 LLM 或 Mock 回傳非字串）
+            if not isinstance(skill_id, str) or not skill_id or skill_id in self.skills_db:
+                # ID 衝突或無效 → 若有未學技能則隨機挑一個，否則放棄
+                if unlearned_skills:
+                    fallback = random.choice(unlearned_skills)
+                    skill_id = fallback["id"]
+                    player.learn_skill(skill_id)
+                    return f"💡 【技能習得】在戰鬥中，你悟出了新技能【{fallback['name']}】！"
                 return None
 
-            skill_id = new_skill.get("skill_id", "")
-            if not skill_id or skill_id in self.skills_db:
-                # ID 衝突或無效，改為學習現有技能
-                if unlearned:
-                    skill_id = random.choice(unlearned)
-                    skill_data = self.skills_db[skill_id]
-                    player.learn_skill(skill_id)
-                    return f"💡 【技能習得】在戰鬥中，你悟出了新技能【{skill_data.get('name', skill_id)}】！"
-                return None
+            # 本地重複偵測：若中文名稱+描述同時高度相似則視為重複
+            duplicate_id = self._is_duplicate_skill(decision)
+            if duplicate_id:
+                dup_name = self.skills_db[duplicate_id].get("name", duplicate_id)
+                print(f"*(系統)* 新技能與 [{duplicate_id}] 高度相似，改為學習現有技能。")
+                if duplicate_id in player.skills:
+                    lvl_msg = player.gain_skill_exp(duplicate_id, 20)  # 雙倍 EXP
+                    bonus_msg = f"💡 【技能感悟】你對【{dup_name}】有了更深的理解，獲得雙倍熟練經驗！"
+                    if lvl_msg:
+                        bonus_msg += f"\n{lvl_msg}"
+                    return bonus_msg
+                player.learn_skill(duplicate_id)
+                return f"💡 【技能習得】在戰鬥中，你悟出了新技能【{dup_name}】！"
 
             # 將新技能存入 skills_db
             skill_entry = {
-                "name": new_skill.get("name", skill_id),
-                "mp_cost": int(new_skill.get("mp_cost", 5)),
-                "required_stat": new_skill.get("required_stat", "STR"),
-                "damage_dice": new_skill.get("damage_dice", "1d6"),
-                "damage_multiplier": float(new_skill.get("damage_multiplier", 1.0)),
-                "accuracy_penalty": int(new_skill.get("accuracy_penalty", 0)),
-                "element": new_skill.get("element", "none"),
-                "status_effect": new_skill.get("status_effect"),
-                "effect_chance": int(new_skill.get("effect_chance", 0)),
-                "description": new_skill.get("description", ""),
+                "name": decision.get("name", skill_id),
+                "mp_cost": int(decision.get("mp_cost", 5)),
+                "required_stat": decision.get("required_stat", "STR"),
+                "damage_dice": decision.get("damage_dice", "1d6"),
+                "damage_multiplier": float(decision.get("damage_multiplier", 1.0)),
+                "accuracy_penalty": int(decision.get("accuracy_penalty", 0)),
+                "element": decision.get("element", "none"),
+                "status_effect": decision.get("status_effect"),
+                "effect_chance": int(decision.get("effect_chance", 0)),
+                "description": decision.get("description", ""),
                 "creator": player.name
             }
             self.skills_db[skill_id] = skill_entry
@@ -402,6 +450,41 @@ class BattleEngine:
                 f"MP消耗: {skill_entry['mp_cost']} | {skill_entry['description']}\n"
                 f"你成為了【{skill_name}】技能在這個世界的第一位發明者！"
             )
+
+    def _is_duplicate_skill(self, new_skill: dict) -> str | None:
+        """
+        判斷新技能是否與現有技能高度重複。
+        規則：中文名稱相似度 >= 80% 且 描述相似度 >= 80% 時視為重複。
+        回傳最相似的現有技能 skill_id，或 None（不重複）。
+        """
+        from difflib import SequenceMatcher
+
+        def similarity(a: str, b: str) -> float:
+            if not a or not b:
+                return 0.0
+            return SequenceMatcher(None, a, b).ratio()
+
+        new_name = new_skill.get("name", "")
+        new_desc = new_skill.get("description", "")
+
+        best_id = None
+        best_score = 0.0
+
+        for sid, sdata in self.skills_db.items():
+            existing_name = sdata.get("name", "")
+            existing_desc = sdata.get("description", "")
+            name_sim = similarity(new_name, existing_name)
+            desc_sim = similarity(new_desc, existing_desc)
+            # 名稱 AND 描述同時高度相似才視為重複
+            if name_sim >= 0.80 and desc_sim >= 0.80:
+                combined = name_sim + desc_sim
+                if combined > best_score:
+                    best_score = combined
+                    best_id = sid
+
+        if best_id:
+            print(f"*(系統)* 重複偵測命中：新技能「{new_name}」與現有技能「{self.skills_db[best_id].get('name')}」({best_id}) 高度相似，相似分={best_score:.2f}")
+        return best_id
 
     def _get_element_multiplier(self, attacker_elem: str, defender_elem: str) -> float:
         """獲取元素傷害倍率"""
@@ -439,7 +522,7 @@ class BattleEngine:
                 m["current_hp"] -= dmg
                 messages.append(f"{m['name']} 受到燃燒傷害 {dmg} 點。")
             elif effect == "中毒":
-                dmg = 10
+                dmg = max(1, int(max_hp * 0.08))  # 比例制：8% 最大 HP
                 m["current_hp"] -= dmg
                 messages.append(f"{m['name']} 受到中毒傷害 {dmg} 點。")
                 

@@ -208,8 +208,7 @@ class RPGCommands(commands.Cog):
 
         await interaction.response.defer()
         engine = session_manager.get_or_create_session(user_id)
-        result = engine.handle_status()
-        await interaction.followup.send(embed=fmt.status_embed(result, engine.player.name))
+        await interaction.followup.send(embed=fmt.status_embed(engine.player))
 
     # =================================================================
     # /items — 物品欄
@@ -406,7 +405,15 @@ class RPGCommands(commands.Cog):
 
         await interaction.response.defer()
         engine = session_manager.get_or_create_session(user_id)
-        result = engine.handle_skill_use(name, action or f"施放{name}")
+
+        # action 未填時，自動帶入技能描述作為動作文字
+        if not action:
+            skill_data = engine.skills_db.get(name) or next(
+                (v for v in engine.skills_db.values() if v.get("name") == name), {}
+            )
+            action = skill_data.get("description") or f"施放{name}"
+
+        result = engine.handle_skill_use(name, action)
         session_manager.flush_session(user_id)
         await interaction.followup.send(embed=fmt.action_embed(result))
 
@@ -567,10 +574,72 @@ class RPGCommands(commands.Cog):
             ),
             inline=False
         )
+        embed.add_field(
+            name="⚔️ PvP 決鬥",
+            value=(
+                "`/pk invite @玩家` — 向玩家發出決鬥邀請\n"
+                "`/pk allow` — 接受待處理的決鬥邀請\n"
+                "`/pk deny` — 拒絕待處理的決鬥邀請"
+            ),
+            inline=False
+        )
         embed.set_footer(text="AI RPG Bot v2 | 由 Ollama LLM 驅動")
         await interaction.response.send_message(embed=embed)
+
+    # =================================================================
+    # /pk — PvP 決鬥系統
+    # =================================================================
+    pk_group = app_commands.Group(name="pk", description="⚔️ PvP 決鬥系統：向其他玩家發起決鬥")
+
+    @pk_group.command(name="invite", description="⚔️ 向另一位玩家發起決鬥邀請")
+    @app_commands.describe(target="要挑戰的玩家")
+    async def pk_invite(self, interaction: discord.Interaction, target: discord.Member):
+        user_id = str(interaction.user.id)
+        if not self._require_registered(interaction):
+            await interaction.response.send_message(
+                embed=fmt.error_embed("請先使用 `/register` 建立角色！"), ephemeral=True
+            )
+            return
+
+        if str(target.id) == user_id:
+            await interaction.response.send_message(
+                embed=fmt.error_embed("❌ 你不能挑戰自己！"), ephemeral=True
+            )
+            return
+
+        engine = session_manager.get_or_create_session(user_id)
+        result = engine.handle_pk_invite(str(target.id))
+        await interaction.response.send_message(embed=fmt.pvp_embed(result, "⚔️ 決鬥邀請"))
+
+    @pk_group.command(name="allow", description="✅ 接受待處理的決鬥邀請")
+    async def pk_allow(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        if not self._require_registered(interaction):
+            await interaction.response.send_message(
+                embed=fmt.error_embed("請先使用 `/register` 建立角色！"), ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+        engine = session_manager.get_or_create_session(user_id)
+        narrative, sys_result = engine.handle_pk_allow()
+        await interaction.followup.send(embed=fmt.pvp_embed(narrative, "⚔️ 決鬥結果"))
+
+    @pk_group.command(name="deny", description="❌ 拒絕待處理的決鬥邀請")
+    async def pk_deny(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        if not self._require_registered(interaction):
+            await interaction.response.send_message(
+                embed=fmt.error_embed("請先使用 `/register` 建立角色！"), ephemeral=True
+            )
+            return
+
+        engine = session_manager.get_or_create_session(user_id)
+        result = engine.handle_pk_deny()
+        await interaction.response.send_message(embed=fmt.pvp_embed(result, "🛡️ 拒絕決鬥"))
 
 
 async def setup(bot: commands.Bot):
     """載入 Cog 的入口函式"""
     await bot.add_cog(RPGCommands(bot))
+

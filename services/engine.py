@@ -3,10 +3,15 @@ import json
 from core.character import Character
 from core.dice import Dice
 from core.quest_manager import QuestManager
+from core.pvp_manager import PvPManager
 from services.ollama_client import OllamaClient
 from services.battle_engine import BattleEngine
+from services.pvp_engine import PvPEngine
 from db.player_repository import PlayerRepository
 from db.database import DB_PATH, init_db
+
+# 全域單例：PvP 邀請狀態（跨 GameEngine 實例共享）
+_pvp_manager = PvPManager()
 
 
 class GameEngine:
@@ -33,6 +38,10 @@ class GameEngine:
         # ── BattleEngine：從 DB 還原戰鬥狀態 ─────────────────────────
         self.battle = BattleEngine(self.llm)
         self.battle.current_monster = self._repo.load_battle_state(discord_user_id)
+
+        # ── PvP：使用全域 manager 與本地 engine ────────────────────────
+        self.pvp_manager = _pvp_manager
+        self.pvp_engine = PvPEngine(self.skills_db)
 
     # ─────────────────────────────────────────────────────────────────
     # 狀態持久化
@@ -97,11 +106,11 @@ class GameEngine:
             exp = skill_lvl_data.get("exp", 0)
             req_exp = level * 100
             
-            # 命中率計算: (屬性 * 5) + (技能等級 * 10) + 15 + 技能命中修正
+            # 命中率計算: (屬性 * 1.5) + (技能等級 * 3) + 65 + 技能命中修正
             req_stat = skill_data.get("required_stat", "STR")
             stat_val = self.player.stats.get(req_stat, 10)
             accuracy_penalty = skill_data.get("accuracy_penalty", 0)
-            hit_chance = max(1, min(99, stat_val * 5 + level * 10 + 15 + accuracy_penalty))
+            hit_chance = max(1, min(99, int(65 + stat_val * 1.5 + level * 3 + accuracy_penalty)))
             hit_str = f"{hit_chance}%"
             if accuracy_penalty < 0:
                 hit_str += f" (含修正 {accuracy_penalty}%)"
@@ -462,8 +471,8 @@ class GameEngine:
         quest_data = self.qm.get_quest(quest_id)
         stat_req = quest_data.get("difficulty_stat", "STR")
         stat_val = self.player.stats.get(stat_req, 10)
-        # 基礎成功率從 (stat * 5) 上調，增加 +15% 基礎命中
-        target_chance = max(1, min(99, (stat_val * 5) + 15))
+        # 基礎成功率
+        target_chance = max(1, min(95, int(50 + stat_val * 2)))
 
         roll = Dice.roll_d100()
         success = roll <= target_chance
@@ -528,9 +537,9 @@ class GameEngine:
                     return f"系統提示: MP 不足！無法施放【{skill_def.get('name', skill_name)}】（需要 {mp_cost} MP）。"
                 self.player.mp -= mp_cost
 
-        # 命中率公式：(屬性 * 5) + (技能等級 * 10) + 15 + 技能命中修正
+        # 命中率公式：65 + (屬性 * 1.5) + (技能等級 * 3) + 技能命中修正
         skill_level = self.player.skills.get(intent.get("skill_used", ""), {}).get("level", 1) if intent.get("skill_used") else 1
-        target_chance = max(1, min(99, (stat_val * 5) + (skill_level * 10) + 15 + accuracy_penalty))
+        target_chance = max(1, min(99, int(65 + (stat_val * 1.5) + (skill_level * 3) + accuracy_penalty)))
         roll = Dice.roll_d100()
         success = roll <= target_chance
         
@@ -546,7 +555,8 @@ class GameEngine:
             on_skill_learned=_sync_skill
         )
         if monster_dead:
-            quest_msgs = self.qm.update_quest_progress("combat", 1)
+            killed_id = self.battle.last_killed_monster_id
+            quest_msgs = self.qm.update_quest_progress("combat", 1, monster_id=killed_id)
             if quest_msgs:
                 narrative += "\n" + "\n".join(quest_msgs)
         return narrative
@@ -581,7 +591,7 @@ class GameEngine:
 
         stat_val = self.player.stats.get(req_stat, 10)
         skill_level = self.player.skills[target_id].get("level", 1)
-        target_chance = max(1, min(99, stat_val * 5 + skill_level * 10 + 15 + accuracy_penalty))
+        target_chance = max(1, min(99, int(65 + stat_val * 1.5 + skill_level * 3 + accuracy_penalty)))
         roll = Dice.roll_d100()
         success = roll <= target_chance
 
@@ -602,7 +612,8 @@ class GameEngine:
             on_skill_learned=_sync_skill
         )
         if monster_dead:
-            quest_msgs = self.qm.update_quest_progress("combat", 1)
+            killed_id = self.battle.last_killed_monster_id
+            quest_msgs = self.qm.update_quest_progress("combat", 1, monster_id=killed_id)
             if quest_msgs:
                 narrative += "\n" + "\n".join(quest_msgs)
         return narrative
@@ -629,10 +640,106 @@ class GameEngine:
         
         stat_val = self.player.stats.get("DEX", 10)
         # 逃跑基礎成功率調整，依賴敏捷
-        target_chance = max(1, min(99, (stat_val * 6) + 20))
+        target_chance = max(1, min(90, int(50 + stat_val * 2)))
         roll = Dice.roll_d100()
         success = roll <= target_chance
 
         action_text = "我轉身就跑！"
         narrative, monster_dead = self.battle.process_turn(self.player, action_text, intent, roll, success)
         return narrative
+
+    # ─────────────────────────────────────────────────────────────────
+    # PvP 指令處理器
+    # ─────────────────────────────────────────────────────────────────
+
+    def handle_pk_invite(self, target_user_id: str) -> str:
+        """
+        向 target_user_id 玩家發送決鬥邀請。
+        呼叫者為 self.discord_user_id。
+        """
+        if self.discord_user_id == target_user_id:
+            return "❌ 你不能向自己發送決鬥邀請。"
+
+        # 若自己正在戰鬥中，禁止挑戰
+        if self.battle.is_in_battle():
+            return "❌ 你目前正在與怪物交戰，無法發送決鬥邀請！請先解決眼前的戰鬥。"
+
+        target_player = self._repo.load_player(target_user_id)
+        if not target_player:
+            return "❌ 找不到指定的玩家，對方可能尚未建立角色。"
+
+        self.pvp_manager.send_invite(self.discord_user_id, target_user_id)
+        return (
+            f"⚔️ 【{self.player.name}】向【{target_player.name}】發出決鬥挑戰！\n"
+            f"【{target_player.name}】請使用 `/pk allow` 接受，或 `/pk deny` 拒絕。"
+        )
+
+    def handle_pk_allow(self) -> tuple[str, str]:
+        """
+        接受決鬥邀請，執行自動戰鬥模擬並由 LLM 渲染結果。
+        回傳 (narrative, sys_result) 兩段訊息。
+        """
+        inviter_id = self.pvp_manager.get_invite(self.discord_user_id)
+        if not inviter_id:
+            return ("❌ 你目前沒有待處理的決鬥邀請。", "")
+
+        inviter_player = self._repo.load_player(inviter_id)
+        if not inviter_player:
+            self.pvp_manager.remove_invite(self.discord_user_id)
+            return ("❌ 邀請者的角色資料已不存在，邀請已失效。", "")
+
+        # 移除邀請
+        self.pvp_manager.remove_invite(self.discord_user_id)
+
+        # ── 自動戰鬥推演 ──
+        print(f"*(系統)* PvP 推演開始：{inviter_player.name} vs {self.player.name}")
+        result = self.pvp_engine.simulate(inviter_player, self.player)
+
+        winner = result["winner"]
+        loser = result["loser"]
+        turns = result["turns"]
+        draw = result["draw"]
+        battle_log = result["battle_log"]
+
+        winner_name = winner.name if winner else None
+
+        # ── LLM 渲染敘事 ──
+        print(f"*(系統)* 正在生成 PvP 決鬥敘事...")
+        narrative = self.llm.generate_pvp_narrative(
+            p1_name=inviter_player.name,
+            p2_name=self.player.name,
+            battle_log=battle_log,
+            winner_name=winner_name,
+            turns=turns,
+        )
+
+        # ── 結算訊息 ──
+        if draw:
+            sys_result = (
+                f"\n[決鬥結算] ⚖️ 平局！\n"
+                f"【{inviter_player.name}】vs 【{self.player.name}】歷經 {turns} 回合，雙方勢均力敵，決鬥以平局收場。"
+            )
+        else:
+            sys_result = (
+                f"\n[決鬥結算] 🏆 勝者：【{winner_name}】\n"
+                f"歷經 {turns} 回合激戰，【{winner_name}】技高一籌，成功擊敗了【{loser.name}】！"
+            )
+
+        full_output = f"{narrative}\n{sys_result}"
+        return (full_output, sys_result)
+
+    def handle_pk_deny(self) -> str:
+        """
+        拒絕決鬥邀請。
+        """
+        inviter_id = self.pvp_manager.get_invite(self.discord_user_id)
+        if not inviter_id:
+            return "❌ 你目前沒有待處理的決鬥邀請。"
+
+        inviter_player = self._repo.load_player(inviter_id)
+        inviter_name = inviter_player.name if inviter_player else inviter_id
+        self.pvp_manager.remove_invite(self.discord_user_id)
+        return (
+            f"🛡️ 【{self.player.name}】拒絕了【{inviter_name}】的決鬥挑戰。\n"
+            f"【{inviter_name}】的挑戰已被婉拒。"
+        )

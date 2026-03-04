@@ -7,8 +7,8 @@
         "difficulty_stat": "CON",
         "difficulty_chance": 80,
         "rewards": {
-            "money": 10,
-            "exp": 20
+            "money": 15,
+            "exp": 35
         }
     },
     "quest_lead_student": {
@@ -19,8 +19,8 @@
         "difficulty_stat": "DEX",
         "difficulty_chance": 60,
         "rewards": {
-            "money": 20,
-            "exp": 30
+            "money": 25,
+            "exp": 45
         }
     },
     "quest_assist_krenz": {
@@ -31,8 +31,8 @@
         "difficulty_stat": "INT",
         "difficulty_chance": 50,
         "rewards": {
-            "money": 80,
-            "exp": 120,
+            "money": 100,
+            "exp": 150,
             "chance_stat_increase": [
                 {
                     "chance": 20,
@@ -42,28 +42,28 @@
             ]
         }
     },
-    "quest_hunt_slime": {
-        "name": "討伐後山史萊姆",
+    "quest_hunt_mountain_monster": {
+        "name": "討伐後山怪物",
         "type": "combat",
+        "target_monsters": [
+            "slime",
+            "goblin"
+        ],
+        "target_amount": 3,
         "provider_id": "npc_commander_lin",
-        "description": "前往魔法學院後山，清除那些煩人的酸性史萊姆。",
+        "description": "後山最近頻繁出沒不明怪物，不論是史萊姆還是哥布林，統統解決掉！擊敗任意後山怪物 3 隻即可回報。",
         "rewards": {
-            "money": 100,
-            "exp": 100
-        }
-    },
-    "quest_hunt_goblin": {
-        "name": "討伐後山哥布林",
-        "type": "combat",
-        "provider_id": "npc_commander_lin",
-        "description": "前往魔法學院後山，清除那些哥布林。",
-        "rewards": {
-            "money": 150,
-            "exp": 150,
+            "money": 160,
+            "exp": 180,
             "chance_stat_increase": [
                 {
-                    "chance": 20,
+                    "chance": 25,
                     "stat": "STR",
+                    "amount": 1
+                },
+                {
+                    "chance": 15,
+                    "stat": "CON",
                     "amount": 1
                 }
             ]

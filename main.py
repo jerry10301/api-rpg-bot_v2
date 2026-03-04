@@ -27,6 +27,9 @@ def print_help():
 /forget-skill [名]- 🛞 遺忘一個技能
 /attack [動]    - 嘗試進行任何動作或攻擊
 /escape         - 🏃‍♂️ 嘗試從戰鬥中逃跑
+/pk [id]        - ⚔️ 向玩家發出決鬥邀請
+/pk allow       - ✅ 接受決鬥邀請
+/pk deny        - ❌ 拒絕決鬥邀請
 /exit           - 離開遊戲
 ========================================
     """)
@@ -141,6 +144,21 @@ def main():
             print(engine.handle_rest())
         elif cmd_line == "/escape":
             print(engine.handle_escape())
+        elif cmd_line.startswith("/pk"):
+            parts = cmd_line.split(" ")
+            if len(parts) >= 2:
+                action = parts[1]
+                if action == "allow":
+                    narrative, _ = engine.handle_pk_allow()
+                    print(narrative)
+                elif action == "deny":
+                    print(engine.handle_pk_deny())
+                else:
+                    # 預設為邀請
+                    target_id = action
+                    print(engine.handle_pk_invite(target_id))
+            else:
+                print("錯誤: 格式為 /pk [邀請ID] 或 /pk allow/deny")
         elif cmd_line == "/skills" or cmd_line == "/skill-list":
             print(engine.handle_skills())
         elif cmd_line.startswith("/use"):

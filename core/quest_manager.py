@@ -45,16 +45,29 @@ class QuestManager:
         if not quest:
             return f"找不到任務 ID: {quest_id}"
             
-        # 簡單初始化：討伐任務預設目標數量為 1
-        target_amount = 1 
+        # 支援新格式 target_monsters（陣列）或舊格式 target_monster（字串）
+        target_monsters = quest.get("target_monsters")
+        if target_monsters is None:
+            single = quest.get("target_monster")
+            target_monsters = [single] if single else None
+
+        # 讀取任務自訂的目標數量，預設為 1
+        target_amount = quest.get("target_amount", 1)
+
         self.active_quests[quest_id] = {
             "name": quest["name"],
             "target_type": quest.get("type", "work"),
+            "target_monsters": target_monsters,  # None 表示任意怪物均可
             "target_amount": target_amount,
             "current_amount": 0,
             "completed": False
         }
-        return f"已接取任務：【{quest['name']}】。請輸入 /questlog 查看進度。"
+        
+        if target_monsters:
+            hint = f"（目標：{' / '.join(target_monsters)}，共 {target_amount} 隻）"
+        else:
+            hint = ""
+        return f"已接取任務：【{quest['name']}】{hint}。請輸入 /questlog 查看進度。"
 
     def get_quest_log(self) -> str:
         """回傳目前任務清單與進度"""
@@ -67,11 +80,24 @@ class QuestManager:
             report += f"[{qid}] {data['name']} - {status}\n"
         return report
 
-    def update_quest_progress(self, target_type: str, increment: int = 1) -> list:
-        """根據遭遇戰或行動結果更新進度"""
+    def update_quest_progress(self, target_type: str, increment: int = 1, monster_id: str = None) -> list:
+        """根據遇遇戰或行動結果更新進度
+        
+        Args:
+            target_type: 任務類型，如 "combat"、"work"
+            increment: 進度增加量
+            monster_id: 擊殺的怪物 ID（只適用於 combat 任務）
+        """
         messages = []
         for qid, data in self.active_quests.items():
             if not data["completed"] and data["target_type"] == target_type:
+                # combat 任務：若任務指定了 target_monsters 清單，則比對怪物 ID 是否在清單內
+                quest_target_monsters = data.get("target_monsters")  # None 表示不限制怪物種類
+                if quest_target_monsters is not None:
+                    if monster_id not in quest_target_monsters:
+                        # 怪物不在指定清單內，跳過
+                        continue
+                
                 data["current_amount"] += increment
                 if data["current_amount"] >= data["target_amount"]:
                     data["current_amount"] = data["target_amount"]

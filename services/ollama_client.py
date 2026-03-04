@@ -170,3 +170,96 @@ class OllamaClient:
             return {}
         except (json.JSONDecodeError, TypeError):
             return {}
+
+    def decide_learned_skill(self, player_name: str, player_action: str, player_level: int, player_stats: dict, unlearned_skills: list, all_skills_summary: list = None) -> dict:
+        """
+        決定玩家學會哪種技能：從現有技能庫挑選，或發明新技能。
+        all_skills_summary: 所有技能（含已學）的摘要，供 LLM 感知全域技能狀態。
+        """
+        skills_info = "\n".join([f"- {s['id']} ({s['name']}): {s['description']}" for s in unlearned_skills])
+        # 完整技能庫摘要（含已學技能），讓 LLM 知道所有已存在技能
+        all_skills_info = ""
+        if all_skills_summary:
+            all_skills_info = "\n".join([f"- {s['id']} ({s['name']}): {s['description']}" for s in all_skills_summary])
+        stats_str = ", ".join(f"{k}:{v}" for k, v in player_stats.items())
+
+        system_prompt = f'''
+你是一個精通 TRPG 的遊戲主持人與平衡設計師。
+玩家目前在戰鬥中觸發了「技能領悟」。你的任務是根據「玩家的動作描述」，決定他是學會了一個「現有技能」還是「發明了新技能」。
+
+**世界中所有已存在的技能（包含玩家已學習的）**：
+{all_skills_info if all_skills_info else "（尚無已存在技能）"}
+
+**玩家尚未學習的技能清單**：
+{skills_info if unlearned_skills else "（目前無現有技能可供學習）"}
+
+**判定準則**：
+1. **優先媒合現有技能**：如果玩家的描述與「玩家尚未學習的技能清單」中的某個技能風格、元素高度契合，請讓玩家學會該技能。
+2. **發明新技能**：只有在描述非常獨特，且上方「所有已存在技能」清單中沒有任何技能與之相似時，才發明新技能。
+3. **嚴格禁止重複**：如果新技能的「繁體中文名稱」與「描述」與上方任何已存在技能高度相似，**絕對不可發明**，必須改為媒合或選擇最接近的現有技能。
+
+**回傳格式 (JSON)**：
+- 如果學習「現有技能」，只需回傳：
+  {{ "learn_type": "existing", "skill_id": "該技能的 ID" }}
+- 如果要「發明新技能」（只有在確認與所有已存在技能不重複時才使用），請回傳：
+  {{
+    "learn_type": "new",
+    "skill_id": "英文唯一識別碼 (PascalCase)",
+    "name": "繁體中文名稱",
+    "mp_cost": 消耗 MP (1~30),
+    "required_stat": "STR/DEX/CON/INT/WIS/LUK",
+    "damage_dice": "骰子表示法 (如 1d6)",
+    "damage_multiplier": 傷害倍率 (1.0~3.0),
+    "accuracy_penalty": 命中修正 (0~-30),
+    "element": "元素屬性",
+    "status_effect": "狀態名稱或 null",
+    "effect_chance": 觸發機率 (0~50),
+    "description": "繁體中文描述 (60字內)"
+  }}
+
+**平衡限制**：
+- 高傷害 (>2.0倍) 必須高 MP 消耗或低命中。
+'''
+        prompt = (
+            f"玩家名稱：{player_name}\n"
+            f"玩家等級：{player_level}\n"
+            f"玩家屬性：{stats_str}\n"
+            f"玩家的戰鬥動作：{player_action}\n"
+            f"請根據描述決定學習類型並回傳對應 JSON。"
+        )
+
+        result_str = self._generate(prompt, system_prompt=system_prompt, format="json")
+        try:
+            return json.loads(result_str)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def generate_pvp_narrative(
+        self,
+        p1_name: str,
+        p2_name: str,
+        battle_log: list,
+        winner_name: str | None,
+        turns: int,
+    ) -> str:
+        """
+        根據 PvP 自動戰鬥紀錄，生成精彩的決鬥敘事。
+        """
+        system_prompt = '''\
+你是一個奇幻世界 TRPG 遊戲的旁白，負責將系統產生的戰鬥事件紀錄，改寫成如史詩般精彩的決鬥場景描述。
+要求：
+1. 使用繁體中文。
+2. 字數限制在 150-250 字內，敘事緊湊、畫面感強。
+3. 包含雙方的攻防過程（命中、閃避、傷害）。
+4. 在末尾以一句話宣告勝利者（或平局）。
+5. 語氣帶有武俠/奇幻史詩風格。
+6. 不需要複述數字資料，而是將其轉換為文學描寫。
+'''
+        log_text = "\n".join(battle_log)
+        prompt = (
+            f"決鬥雙方：【{p1_name}】vs 【{p2_name}】\n"
+            f"共歷 {turns} 個回合\n"
+            f"勝者：{'平局' if winner_name is None else winner_name}\n"
+            f"\n--- 戰鬥紀錄 ---\n{log_text}"
+        )
+        return self._generate(prompt, system_prompt=system_prompt)
